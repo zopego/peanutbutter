@@ -40,7 +40,7 @@ var _ Focusable = &ShortCutPanel{}
 var _ CanSendMsgToParent = &ShortCutPanel{}
 
 func (p ShortCutPanel) Init() tea.Cmd {
-	//DebugPrintf("ShortCutPanel.Init() called for %v\n", p.GetPath())
+	DebugPrintf("ShortCutPanel.Init() called for %v\n", p.GetPath())
 	var batchCmds []tea.Cmd
 	cmd := p.Panel.Init()
 	if cmd != nil {

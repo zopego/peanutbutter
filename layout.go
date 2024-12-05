@@ -41,7 +41,7 @@ func (d Dimension) IsPureFixed() bool {
 }
 
 func (d Dimension) IsConstrained() bool {
-	return d.IsPureFixed() || (d.IsPureRatio() && (d.Min > 0 || d.Max > 0))
+	return d.IsPureFixed() || (d.Ratio > 0.0 && (d.Max > 0 || d.Min > 0))
 }
 
 func (d Dimension) IsValid() bool {
@@ -82,14 +82,15 @@ func (l Layout) AreDimensionsValid(printErrors bool) bool {
 		}
 	}
 	if numConstrained > 1 {
-		// There can be at most one unspecified dimension
-		if printErrors {
-			fmt.Printf("There can be at most one unspecified dimension, found %d\n", numUnspecified)
+		if printErrors && numUnspecified != 1 {
+			fmt.Printf("There needs to be exactly one unspecified dimension, found %d unspecified & %d constrained\n", numUnspecified, numConstrained)
+			fmt.Printf("Layout: %+v\n", l)
 		}
 		return numUnspecified == 1
 	} else {
 		if printErrors && numUnspecified > 0 {
-			fmt.Printf("There should be no unspecified dimensions, found %d\n", numUnspecified)
+			fmt.Printf("There should be no unspecified dimensions, found %d unspecified & %d constrained\n", numUnspecified, numConstrained)
+			fmt.Printf("Layout: %+v\n", l)
 		}
 		return numUnspecified == 0
 	}

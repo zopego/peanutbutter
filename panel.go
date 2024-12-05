@@ -40,6 +40,7 @@ func (p Panel) SetPath(path []int) Focusable {
 }
 
 func (p Panel) Init() tea.Cmd {
+	DebugPrintf("Panel.Init() called for %v\n", p.GetPath())
 	cmd := p.Model.Init()
 	if cmd != nil {
 		return p.RoutedCmd(cmd)

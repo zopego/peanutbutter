@@ -36,9 +36,10 @@ func NewListPanel(models []Focusable, layout Layout) ListPanel {
 }
 
 func (m ListPanel) Init() tea.Cmd {
+	DebugPrintf("ListPanel.Init() called for %v\n", m.path)
 	var cmds []tea.Cmd
 	for _, panel := range m.Panels {
-		if model, ok := panel.(ShortCutPanel); ok {
+		if model, ok := panel.(Focusable); ok {
 			cmd := model.Init()
 			cmds = append(cmds, cmd)
 		}
