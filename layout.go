@@ -1,7 +1,8 @@
 package panelbubble
 
 import (
-	O "github.com/IBM/fp-go/option"
+	"fmt"
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -19,42 +20,47 @@ type Layout struct {
 	Dimensions  []Dimension
 }
 
-// Atleast one of the fields should be present
+// If all fields are 0, it is assumed that the panel should take up the remaining space
 type Dimension struct {
-	Min   O.Option[int]
-	Max   O.Option[int]
-	Fixed O.Option[int]
-	Ratio float64
+	Min   int     //valid if > 0, assumed unspecified otherwise
+	Max   int     //valid if > 0, assumed unspecified otherwise
+	Fixed int     //valid if > 0, assumed unspecified otherwise
+	Ratio float64 //valid if > 0, assumed unspecified otherwise
 }
 
-// In this order of precedence:
-// If Fixed is specified, it is always fixed
-// If Fixed is not specified, Min is respected but can be ratiometrically scaled
-// If Max is specified, it is always respected but can be ratiometrically scaled
-// If Ratio is specified, it is always respected but can be ratiometrically scaled
-
-func (d Dimension) GetMin() int {
-	min, ok := O.Unwrap(d.Min)
-	if ok {
-		return min
-	}
-	fixed, ok := O.Unwrap(d.Fixed)
-	if ok {
-		return fixed
-	}
-	return 0
+func (d Dimension) IsFlexible() bool {
+	return d.Ratio <= 0.0 && d.Min <= 0 && d.Max <= 0 && d.Fixed <= 0
 }
 
-func (d Dimension) GetMax() int {
-	max, ok := O.Unwrap(d.Max)
-	if ok {
-		return max
+func (d Dimension) IsValid() bool {
+	if d.IsFlexible() {
+		return true
 	}
-	fixed, ok := O.Unwrap(d.Fixed)
-	if ok {
-		return fixed
+
+	if d.Ratio > 0.0 {
+		return true
 	}
-	return 9999
+
+	if d.Fixed > 0 {
+		return true
+	}
+
+	return false
+}
+
+func (l Layout) AreDimensionsValid() bool {
+	for _, d := range l.Dimensions {
+		if !d.IsValid() {
+			return false
+		}
+	}
+	numFlexible := 0
+	for _, d := range l.Dimensions {
+		if d.IsFlexible() {
+			numFlexible++
+		}
+	}
+	return numFlexible <= 1
 }
 
 type ResizeMsg struct {
@@ -63,8 +69,48 @@ type ResizeMsg struct {
 	Height int
 }
 
-// Layout can not magically find a size that works for all panels,
-// but when possible, it will try to respect the constraints.
-// If available size is less than minimum size, all panels will be set to minimum size
-// If available size is more than maximum size, all panels will be set to maximum size
-// If available size is in between min and max, all panels will be set to ratio-metric size
+// Here we assume that the layout is valid
+func CalculateDimensions(dimensions []Dimension, total int) []int {
+	sizes := make([]int, len(dimensions))
+	adjustIndex := -1
+	allocated := 0
+	for i, d := range dimensions {
+		if !d.IsValid() {
+			fmt.Println("Invalid dimension", d)
+			sizes[i] = 0
+			continue
+		}
+		if d.IsFlexible() {
+			adjustIndex = i
+			continue
+		}
+		if d.Fixed > 0 {
+			sizes[i] = d.Fixed
+			allocated += d.Fixed
+			continue
+		}
+		if d.Ratio > 0.0 {
+			ratioSize := int(float64(total) * d.Ratio)
+			if ratioSize < d.Min {
+				ratioSize = d.Min
+			}
+			if ratioSize > d.Max {
+				ratioSize = d.Max
+			}
+			sizes[i] = ratioSize
+			allocated += ratioSize
+		}
+	}
+	if adjustIndex == -1 {
+		return sizes
+	} else {
+		sizes[adjustIndex] = total - allocated
+	}
+	return sizes
+}
+
+// Preconditions: The layout is Vertical or Horizontal
+// Total > 0
+func (l Layout) CalculateDims(total int) []int {
+	return CalculateDimensions(l.Dimensions, total)
+}

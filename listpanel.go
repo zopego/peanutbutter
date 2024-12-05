@@ -1,6 +1,8 @@
 package panelbubble
 
 import (
+	"fmt"
+
 	A "github.com/IBM/fp-go/array"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -41,6 +43,9 @@ func (m ListPanel) Init() tea.Cmd {
 			cmd := model.Init()
 			cmds = append(cmds, cmd)
 		}
+	}
+	if !m.Layout.AreDimensionsValid() {
+		panic(fmt.Sprintf("Invalid layout: %+v", m))
 	}
 	return tea.Batch(cmds...)
 }
