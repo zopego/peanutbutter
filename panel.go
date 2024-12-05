@@ -10,7 +10,6 @@ type Panel struct {
 	path         []int // Path to uniquely identify this node in the hierarchy
 	Name         string
 	Workflow     WorkflowHandlerInterface
-	Layout       Layout
 	MsgForParent tea.Msg
 }
 
@@ -161,11 +160,9 @@ func (p Panel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return p.HandleMessage(msg.Msg)
 	case ResizeMsg:
 		return p.HandleSizeMsg(msg)
+	case BroadcastMsg:
+		return p.HandleMessage(msg.Msg)
 	default:
 		return p.HandleMessage(msg)
 	}
-}
-
-func (p Panel) GetLayout() Layout {
-	return p.Layout
 }

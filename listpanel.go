@@ -215,12 +215,12 @@ func (m ListPanel) HandleZStackedSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m ListPanel) makeDims(total int) []int {
-	total_ratio := A.Reduce(func(acc float64, p Focusable) float64 {
-		return acc + p.GetLayout().Dimension.Ratio
-	}, 0.0)(m.Panels)
-	dims := A.Map(func(p Focusable) int {
-		return int(float64(total) * p.GetLayout().Dimension.Ratio)
-	})(m.Panels)
+	total_ratio := A.Reduce(func(acc float64, p Dimension) float64 {
+		return acc + p.Ratio
+	}, 0.0)(m.Layout.Dimensions)
+	dims := A.Map(func(p Dimension) int {
+		return int(float64(total) * p.Ratio)
+	})(m.Layout.Dimensions)
 	total_sum := A.Reduce(func(acc int, p int) int {
 		return acc + p
 	}, 0)(dims)

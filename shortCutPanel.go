@@ -166,14 +166,17 @@ func (p ShortCutPanel) HandleSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd) {
 		width := msg.Width - horz
 		height := msg.Height - vert - text_height
 		//p.TitleStyle = p.TitleStyle.Width(width)
-		p.PanelStyle.UnfocusedBorder = p.PanelStyle.UnfocusedBorder.Width(width)
-		p.PanelStyle.FocusedBorder = p.PanelStyle.FocusedBorder.Width(width)
 		updatedModel, cmd := model.HandleSizeMsg(ResizeMsg{Msg: msg, Width: width, Height: height})
 		p.Panel.Model = updatedModel
 		if cmd != nil {
 			return p, cmd
 		}
 	}
+	h, w := msg.Height-2, msg.Width-2
+	p.PanelStyle.UnfocusedBorder = p.PanelStyle.UnfocusedBorder.Width(w)
+	p.PanelStyle.FocusedBorder = p.PanelStyle.FocusedBorder.Width(w)
+	p.PanelStyle.UnfocusedBorder = p.PanelStyle.UnfocusedBorder.Height(h)
+	p.PanelStyle.FocusedBorder = p.PanelStyle.FocusedBorder.Height(h)
 	return p, nil
 }
 

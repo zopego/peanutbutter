@@ -16,7 +16,7 @@ const (
 // Layout is a struct that describes the layout of a panel
 type Layout struct {
 	Orientation Orientation
-	Dimension   Dimension
+	Dimensions  []Dimension
 }
 
 // Atleast one of the fields should be present

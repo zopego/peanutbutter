@@ -48,7 +48,6 @@ type Focusable interface {
 	IsFocused() bool
 	GetPath() []int
 	SetPath(path []int) Focusable
-	GetLayout() Layout
 	tea.Model
 }
 
