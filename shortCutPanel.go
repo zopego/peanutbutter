@@ -65,7 +65,7 @@ func (p ShortCutPanel) View() string {
 }
 
 func (p *ShortCutPanel) HandleMessageFromChild(msg tea.Msg) tea.Cmd {
-	//DebugPrintf("ShortCutPanel received message from child: %T %+v\n", msg, msg)
+	DebugPrintf("ShortCutPanel received message from child: %T %+v\n", msg, msg)
 	if msg, ok := msg.(tea.KeyMsg); ok {
 		if p.Panel.Workflow != nil {
 			switch msg.String() {
@@ -91,11 +91,10 @@ func (p *ShortCutPanel) HandleMessageFromChild(msg tea.Msg) tea.Cmd {
 						}
 					}
 				}
-			default:
-				return func() tea.Msg {
-					return ConsiderForLocalShortcutMsg{Msg: msg}
-				}
 			}
+		}
+		return func() tea.Msg {
+			return ConsiderForLocalShortcutMsg{Msg: msg}
 		}
 	}
 	return nil
