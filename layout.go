@@ -28,12 +28,24 @@ type Dimension struct {
 	Ratio float64 //valid if > 0, assumed unspecified otherwise
 }
 
-func (d Dimension) IsFlexible() bool {
+func (d Dimension) IsUnspecified() bool {
 	return d.Ratio <= 0.0 && d.Min <= 0 && d.Max <= 0 && d.Fixed <= 0
 }
 
+func (d Dimension) IsPureRatio() bool {
+	return d.Ratio > 0.0 && d.Min <= 0 && d.Max <= 0 && d.Fixed <= 0
+}
+
+func (d Dimension) IsPureFixed() bool {
+	return d.Fixed > 0 && d.Ratio <= 0.0 && d.Min <= 0 && d.Max <= 0
+}
+
+func (d Dimension) IsConstrained() bool {
+	return d.IsPureFixed() || (d.IsPureRatio() && (d.Min > 0 || d.Max > 0))
+}
+
 func (d Dimension) IsValid() bool {
-	if d.IsFlexible() {
+	if d.IsUnspecified() {
 		return true
 	}
 
@@ -48,19 +60,56 @@ func (d Dimension) IsValid() bool {
 	return false
 }
 
-func (l Layout) AreDimensionsValid() bool {
-	for _, d := range l.Dimensions {
+func (l Layout) IsLayoutValid() bool {
+	return l.AreDimensionsValid(false)
+}
+
+func (l Layout) AreDimensionsValid(printErrors bool) bool {
+	numConstrained := 0
+	numUnspecified := 0
+	for i, d := range l.Dimensions {
 		if !d.IsValid() {
+			if printErrors {
+				fmt.Printf("Invalid dimension at index %d: %+v\n", i, d)
+			}
 			return false
 		}
-	}
-	numFlexible := 0
-	for _, d := range l.Dimensions {
-		if d.IsFlexible() {
-			numFlexible++
+		if d.IsConstrained() {
+			numConstrained++
+		}
+		if d.IsUnspecified() {
+			numUnspecified++
 		}
 	}
-	return numFlexible <= 1
+	if numConstrained > 1 {
+		// There can be at most one unspecified dimension
+		if printErrors {
+			fmt.Printf("There can be at most one unspecified dimension, found %d\n", numUnspecified)
+		}
+		return numUnspecified == 1
+	} else {
+		if printErrors && numUnspecified > 0 {
+			fmt.Printf("There should be no unspecified dimensions, found %d\n", numUnspecified)
+		}
+		return numUnspecified == 0
+	}
+}
+
+func (l ListPanel) IsLayoutValid() bool {
+	return l.AreDimensionsValid(false)
+}
+
+func (l ListPanel) AreDimensionsValid(printErrors bool) bool {
+	if l.Layout.Orientation == ZStacked {
+		return true
+	}
+	if len(l.Panels) != len(l.Layout.Dimensions) {
+		if printErrors {
+			fmt.Printf("Number of panels (%d) does not match number of dimensions (%d)\n", len(l.Panels), len(l.Layout.Dimensions))
+		}
+		return false
+	}
+	return l.Layout.AreDimensionsValid(printErrors)
 }
 
 type ResizeMsg struct {
@@ -80,7 +129,7 @@ func CalculateDimensions(dimensions []Dimension, total int) []int {
 			sizes[i] = 0
 			continue
 		}
-		if d.IsFlexible() {
+		if d.IsUnspecified() {
 			adjustIndex = i
 			continue
 		}
@@ -91,10 +140,10 @@ func CalculateDimensions(dimensions []Dimension, total int) []int {
 		}
 		if d.Ratio > 0.0 {
 			ratioSize := int(float64(total) * d.Ratio)
-			if ratioSize < d.Min {
+			if d.Min > 0 && ratioSize < d.Min {
 				ratioSize = d.Min
 			}
-			if ratioSize > d.Max {
+			if d.Max > 0 && ratioSize > d.Max {
 				ratioSize = d.Max
 			}
 			sizes[i] = ratioSize

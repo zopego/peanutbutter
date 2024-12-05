@@ -3,7 +3,6 @@ package panelbubble
 import (
 	"fmt"
 
-	A "github.com/IBM/fp-go/array"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -44,8 +43,10 @@ func (m ListPanel) Init() tea.Cmd {
 			cmds = append(cmds, cmd)
 		}
 	}
-	if !m.Layout.AreDimensionsValid() {
-		panic(fmt.Sprintf("Invalid layout: %+v", m))
+	if !m.IsLayoutValid() {
+		fmt.Printf("Invalid layout: %+v -- \n", m.path)
+		m.AreDimensionsValid(true)
+		panic("-- Invalid layout")
 	}
 	return tea.Batch(cmds...)
 }
@@ -219,6 +220,7 @@ func (m ListPanel) HandleZStackedSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+/*
 func (m ListPanel) makeDims(total int) []int {
 	total_ratio := A.Reduce(func(acc float64, p Dimension) float64 {
 		return acc + p.Ratio
@@ -237,6 +239,7 @@ func (m ListPanel) makeDims(total int) []int {
 	}
 	return dims
 }
+*/
 
 func (m ListPanel) HandleSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd) {
 	DebugPrintf("ListPanel %v received size message: %+v\n", m.path, msg)
@@ -246,7 +249,7 @@ func (m ListPanel) HandleSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if m.Layout.Orientation == Horizontal {
-		widths := m.makeDims(msg.Width)
+		widths := m.Layout.CalculateDims(msg.Width)
 		for i, panel := range m.Panels {
 			newMsg := ResizeMsg{
 				Width:  widths[i],
@@ -259,7 +262,7 @@ func (m ListPanel) HandleSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	} else {
-		heights := m.makeDims(msg.Height)
+		heights := m.Layout.CalculateDims(msg.Height)
 		for i, panel := range m.Panels {
 			newMsg := ResizeMsg{
 				Width:  msg.Width,
