@@ -21,6 +21,7 @@ type ListPanel struct {
 
 var _ tea.Model = &ListPanel{}
 var _ Focusable = &ListPanel{}
+var _ CanSendMsgToParent = &ListPanel{}
 
 func NewListPanel(models []Focusable, layout Layout) ListPanel {
 	panels := make([]Focusable, len(models))
@@ -33,6 +34,16 @@ func NewListPanel(models []Focusable, layout Layout) ListPanel {
 		Panels: panels,
 		Layout: layout,
 	}
+}
+
+func (m ListPanel) GetMsgForParent() (tea.Model, tea.Msg) {
+	msg := m.MsgForParent
+	m.MsgForParent = nil
+	return m, msg
+}
+
+func (m *ListPanel) SetMsgForParent(msg tea.Msg) {
+	m.MsgForParent = msg
 }
 
 func (m ListPanel) Init() tea.Cmd {
@@ -117,7 +128,7 @@ func (m ListPanel) HandleZStackedMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 	return m, nil, false
 }
 
-func (m ListPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m ListPanel) Update2(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if msg, ok := msg.(ResizeMsg); ok {
 		return m.HandleSizeMsg(msg)
 	}
@@ -150,20 +161,20 @@ func (m ListPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case RoutedMsgType:
-		l := len(m.path)
-
-		nextIdx := msg.GetRoutePath()[l]
-		if nextIdx < 0 || nextIdx > len(m.Panels) {
-			return m, nil
-		}
-		if nextIdx == len(m.Panels) {
-			// This message is destined for this panel
-			updatedModel, cmd := m.HandleMessage(msg.Msg)
-			m.Panels[nextIdx] = updatedModel.(Focusable)
+		l_mypath := len(m.path)
+		l_msgpath := len(msg.GetRoutePath())
+		if l_mypath == l_msgpath {
+			// This message is destined for this listpanel
+			updatedModel, cmd := m.HandleRoutedMessage(msg.Msg)
+			m = updatedModel.(ListPanel)
 			if cmd != nil {
 				return m, cmd
 			}
 		} else {
+			nextIdx := msg.GetRoutePath()[l_mypath]
+			if nextIdx < 0 || nextIdx > len(m.Panels) {
+				return m, nil
+			}
 			updatedModel, cmd := m.Panels[nextIdx].Update(msg.Msg)
 			m.Panels[nextIdx] = updatedModel.(Focusable)
 			if cmd != nil {
@@ -194,7 +205,73 @@ func (m ListPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m ListPanel) HandleMessage(msg tea.Msg) (Focusable, tea.Cmd) {
+func (m ListPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	cmds := []tea.Cmd{}
+	newm, cmd := m.Update2(msg)
+	m = newm.(ListPanel)
+	if cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	for i, panel := range m.Panels {
+		if panel, ok := panel.(CanSendMsgToParent); ok {
+			updatedPanel, msg := panel.GetMsgForParent()
+			m.Panels[i] = updatedPanel.(Focusable)
+			if msg != nil {
+				updatedModel, cmd := m.HandleMessageFromChild(msg)
+				m = updatedModel.(ListPanel)
+				if cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+			}
+		}
+	}
+	return m, tea.Batch(cmds...)
+}
+
+func (m ListPanel) HandleMessageFromChild(msg tea.Msg) (tea.Model, tea.Cmd) {
+	DebugPrintf("ListPanel %v received message from child: %T %+v\n", m.path, msg, msg)
+	if msg, ok := msg.(GeometricFocusRequestMsg); ok {
+		if m.Layout.Orientation == Horizontal && (msg.Direction == Left || msg.Direction == Right) {
+			// first, lets find the currently focused panel
+			focusIndex := -1
+			for i, panel := range m.Panels {
+				if panel.IsFocused() {
+					focusIndex = i
+					break
+				}
+			}
+			if msg.Direction == Left {
+				focusIndex--
+			} else {
+				focusIndex++
+			}
+			if focusIndex >= 0 && focusIndex < len(m.Panels) {
+				path := append(m.path, focusIndex)
+				cmd := func() tea.Msg {
+					return FocusRequestMsg{Relation: Self, RequestedPath: path}
+				}
+				return m, cmd
+			}
+		}
+	}
+	m.SetMsgForParent(msg)
+	return m, nil
+}
+
+func (m ListPanel) HandleRoutedMessage(msg tea.Msg) (Focusable, tea.Cmd) {
+	DebugPrintf("ListPanel %v received routed message: %T %+v\n", m.path, msg, msg)
+	if msg, ok := msg.(FocusGrantMsg); ok {
+		// we'll add a path segment to the first panel in the list
+		if len(m.Panels) > 0 {
+			newmsg := msg
+			newmsg.RoutePath.Path = append(newmsg.RoutePath.Path, 0)
+			updatedPanel, cmd := m.Panels[0].Update(newmsg)
+			m.Panels[0] = updatedPanel.(Focusable)
+			if cmd != nil {
+				return m, cmd
+			}
+		}
+	}
 	return m, nil
 }
 
@@ -220,27 +297,6 @@ func (m ListPanel) HandleZStackedSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd) {
 	}
 	return m, nil
 }
-
-/*
-func (m ListPanel) makeDims(total int) []int {
-	total_ratio := A.Reduce(func(acc float64, p Dimension) float64 {
-		return acc + p.Ratio
-	}, 0.0)(m.Layout.Dimensions)
-	dims := A.Map(func(p Dimension) int {
-		return int(float64(total) * p.Ratio)
-	})(m.Layout.Dimensions)
-	total_sum := A.Reduce(func(acc int, p int) int {
-		return acc + p
-	}, 0)(dims)
-	total_by_ratio := int(float64(total) * total_ratio)
-	if total_sum != total_by_ratio {
-		diff := total_by_ratio - total_sum
-		_ = diff
-		//dims[len(dims)-1] += diff
-	}
-	return dims
-}
-*/
 
 func (m ListPanel) HandleSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd) {
 	DebugPrintf("ListPanel %v received size message: %+v\n", m.path, msg)

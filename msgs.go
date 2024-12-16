@@ -51,6 +51,19 @@ type FocusRequestMsg struct {
 	WorkflowName  string
 }
 
+type Direction int
+
+const (
+	Up Direction = iota
+	Down
+	Left
+	Right
+)
+
+type GeometricFocusRequestMsg struct {
+	Direction Direction
+}
+
 func (msg FocusRequestMsg) AsRouteTypedMsg() tea.Msg {
 	return RequestMsgType{Msg: msg}
 }

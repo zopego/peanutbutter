@@ -18,6 +18,7 @@ type ShortCutPanelConfig struct {
 	TitleStyle                  lipgloss.Style
 	PanelStyle                  PanelStyle
 	EnableWorkflowFocusMovement bool
+	EnableHorizontalMovement    bool
 }
 
 // ShortCutPanel is an extension of Panel that can handle
@@ -38,6 +39,16 @@ type ShortCutPanel struct {
 var _ tea.Model = &ShortCutPanel{}
 var _ Focusable = &ShortCutPanel{}
 var _ CanSendMsgToParent = &ShortCutPanel{}
+
+func (p ShortCutPanel) GetMsgForParent() (tea.Model, tea.Msg) {
+	updatedPanel, msg := p.Panel.GetMsgForParent()
+	p.Panel = updatedPanel.(Panel)
+	return p, msg
+}
+
+func (p ShortCutPanel) SetMsgForParent(msg tea.Msg) {
+	p.Panel.SetMsgForParent(msg)
+}
 
 func (p ShortCutPanel) Init() tea.Cmd {
 	DebugPrintf("ShortCutPanel.Init() called for %v\n", p.GetPath())
@@ -67,6 +78,17 @@ func (p ShortCutPanel) View() string {
 func (p *ShortCutPanel) HandleMessageFromChild(msg tea.Msg) tea.Cmd {
 	DebugPrintf("ShortCutPanel received message from child: %T %+v\n", msg, msg)
 	if msg, ok := msg.(tea.KeyMsg); ok {
+		if p.EnableHorizontalMovement {
+			switch msg.String() {
+			case "left", "right":
+				direction := Left
+				if msg.String() == "right" {
+					direction = Right
+				}
+				p.Panel.SetMsgForParent(GeometricFocusRequestMsg{Direction: direction})
+				return nil
+			}
+		}
 		if p.Panel.Workflow != nil {
 			switch msg.String() {
 			case "enter", "down":
