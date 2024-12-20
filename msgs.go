@@ -212,6 +212,7 @@ func BatchCmdHandler(msg tea.BatchMsg) []tea.Msg {
 // Auto-routed batch messages need to be converted to auto-routed cmds
 // and then added to the batch to be executed.
 func HandleAutoRoutedBatchMsg(msg tea.BatchMsg, path []int) tea.Cmd {
+	DebugPrintf("HandleAutoRoutedBatchMsg: %+v\n", msg)
 	cmds := []tea.Cmd{}
 	for _, m := range msg {
 		if m != nil {

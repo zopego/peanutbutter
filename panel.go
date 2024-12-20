@@ -137,10 +137,6 @@ func (p Panel) HandleFocus(msg tea.Msg) (Focusable, tea.Cmd) {
 	return p, nil
 }
 
-type HandlesSizeMsg interface {
-	HandleSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd)
-}
-
 func (p Panel) HandleSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd) {
 	if model, ok := p.Model.(HandlesSizeMsg); ok {
 		updatedModel, cmd := model.HandleSizeMsg(msg)

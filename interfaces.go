@@ -60,3 +60,7 @@ type WorkflowHandlerInterface interface {
 	IsFirst() bool
 	IsLast() bool
 }
+
+type HandlesSizeMsg interface {
+	HandleSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd)
+}
