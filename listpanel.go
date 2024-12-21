@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	tcellviews "github.com/gdamore/tcell/v2/views"
 )
 
 // ListPanel can house a list of panels
@@ -17,11 +18,37 @@ type ListPanel struct {
 	Layout       Layout
 	Selected     int // Index of the selected panel, only used if the orientation is Vertical
 	Name         string
+	view         *tcellviews.ViewPort
+	redraw       bool
 }
 
 var _ tea.Model = &ListPanel{}
 var _ Focusable = &ListPanel{}
 var _ CanSendMsgToParent = &ListPanel{}
+
+func (p ListPanel) SetView(view *tcellviews.ViewPort) Focusable {
+	p.view = view
+	for i, panel := range p.Panels {
+		newView := tcellviews.NewViewPort(p.view, 0, 0, -1, -1)
+		newPanel := panel.SetView(newView)
+		p.Panels[i] = newPanel.(Focusable)
+	}
+	return p
+}
+
+func (p ListPanel) Draw(force bool) Focusable {
+	continueForce := p.redraw || force
+	if p.Layout.Orientation == ZStacked {
+		p.Panels[p.Selected].Draw(continueForce)
+	} else {
+		for i, panel := range p.Panels {
+			newPanel := panel.Draw(continueForce)
+			p.Panels[i] = newPanel.(Focusable)
+		}
+	}
+	p.redraw = false
+	return p
+}
 
 func NewListPanel(models []Focusable, layout Layout) ListPanel {
 	panels := make([]Focusable, len(models))
@@ -50,8 +77,8 @@ func (m ListPanel) Init() tea.Cmd {
 	DebugPrintf("ListPanel.Init() called for %v\n", m.path)
 	var cmds []tea.Cmd
 	for _, panel := range m.Panels {
-		if model, ok := panel.(Focusable); ok {
-			cmd := model.Init()
+		if panel, ok := panel.(Focusable); ok {
+			cmd := panel.Init()
 			cmds = append(cmds, cmd)
 		}
 	}
@@ -122,6 +149,7 @@ func (m ListPanel) HandleZStackedMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 	if msg, ok := msg.(SelectTabIndexMsg); ok {
 		if msg.ListPanelName == m.Name {
 			m, cmd := m.SetSelected(msg.Index)
+			m.redraw = true
 			return m, cmd, true
 		}
 	}
@@ -283,6 +311,8 @@ func (m ListPanel) HandleZStackedSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd) {
 	cmds := []tea.Cmd{}
 	for i, panel := range m.Panels {
 		newMsg := ResizeMsg{
+			X:      0,
+			Y:      0,
 			Width:  msg.Width,
 			Height: msg.Height,
 		}
@@ -300,6 +330,9 @@ func (m ListPanel) HandleZStackedSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd) {
 
 func (m ListPanel) HandleSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd) {
 	DebugPrintf("ListPanel %v received size message: %+v\n", m.path, msg)
+	if m.view != nil {
+		m.view.Resize(msg.X, msg.Y, msg.Width, msg.Height)
+	}
 	cmds := []tea.Cmd{}
 	if m.Layout.Orientation == ZStacked {
 		return m.HandleZStackedSizeMsg(msg)
@@ -307,11 +340,17 @@ func (m ListPanel) HandleSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd) {
 
 	if m.Layout.Orientation == Horizontal {
 		widths := m.Layout.CalculateDims(msg.Width)
+		X := 0
 		for i, panel := range m.Panels {
+			w := widths[i]
+			h := msg.Height
 			newMsg := ResizeMsg{
-				Width:  widths[i],
-				Height: msg.Height,
+				X:      X,
+				Y:      0,
+				Width:  w,
+				Height: h,
 			}
+			X += w
 			updatedModel, cmd := panel.Update(newMsg)
 			m.Panels[i] = updatedModel.(Focusable)
 			if cmd != nil {
@@ -320,11 +359,17 @@ func (m ListPanel) HandleSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd) {
 		}
 	} else {
 		heights := m.Layout.CalculateDims(msg.Height)
+		Y := 0
 		for i, panel := range m.Panels {
+			w := msg.Width
+			h := heights[i]
 			newMsg := ResizeMsg{
-				Width:  msg.Width,
-				Height: heights[i],
+				X:      0,
+				Y:      Y,
+				Width:  w,
+				Height: h,
 			}
+			Y += h
 			updatedModel, cmd := panel.Update(newMsg)
 			m.Panels[i] = updatedModel.(Focusable)
 			if cmd != nil {

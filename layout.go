@@ -115,6 +115,8 @@ func (l ListPanel) AreDimensionsValid(printErrors bool) bool {
 
 type ResizeMsg struct {
 	tea.Msg
+	X      int
+	Y      int
 	Width  int
 	Height int
 }

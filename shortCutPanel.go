@@ -3,6 +3,7 @@ package panelbubble
 import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	tcellviews "github.com/gdamore/tcell/v2/views"
 )
 
 type PanelStyle struct {
@@ -39,6 +40,22 @@ type ShortCutPanel struct {
 var _ tea.Model = &ShortCutPanel{}
 var _ Focusable = &ShortCutPanel{}
 var _ CanSendMsgToParent = &ShortCutPanel{}
+
+func (p ShortCutPanel) SetView(view *tcellviews.ViewPort) Focusable {
+	p.view = view
+	return p
+}
+
+func (p ShortCutPanel) Draw(force bool) Focusable {
+	if p.redraw || force {
+		str := p.View()
+		if p.view != nil {
+			tcellDrawHelper(str, p.view)
+		}
+		p.redraw = false
+	}
+	return p
+}
 
 func (p ShortCutPanel) GetMsgForParent() (tea.Model, tea.Msg) {
 	updatedPanel, msg := p.Panel.GetMsgForParent()
@@ -124,6 +141,17 @@ func (p *ShortCutPanel) HandleMessageFromChild(msg tea.Msg) tea.Cmd {
 
 func (p ShortCutPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	DebugPrintf("ShortCutPanel.Update() called for %v\n", p.GetPath())
+	m, cmd := p.updateHelper(msg)
+	n := m.(ShortCutPanel)
+	if cmd != nil {
+		n.redraw = true
+		return n, cmd
+	}
+	n.redraw = true
+	return n, nil
+}
+
+func (p ShortCutPanel) updateHelper(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case ConsiderForGlobalShortcutMsg, ConsiderForLocalShortcutMsg:
 		return p.HandleShortcuts(msg)
@@ -180,6 +208,9 @@ func GetStylingSize(s lipgloss.Style) (int, int) {
 
 func (p ShortCutPanel) HandleSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd) {
 	DebugPrintf("ShortCutPanel received size message: %+v\n", msg)
+	if p.view != nil {
+		p.view.Resize(msg.X, msg.Y, msg.Width, msg.Height)
+	}
 	if model, ok := p.Panel.Model.(HandlesSizeMsg); ok {
 		_, tvert := GetStylingSize(p.TitleStyle)
 		text_height := 1 + tvert
@@ -187,7 +218,7 @@ func (p ShortCutPanel) HandleSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd) {
 		width := msg.Width - horz
 		height := msg.Height - vert - text_height
 		//p.TitleStyle = p.TitleStyle.Width(width)
-		updatedModel, cmd := model.HandleSizeMsg(ResizeMsg{Msg: msg, Width: width, Height: height})
+		updatedModel, cmd := model.HandleSizeMsg(ResizeMsg{Msg: msg, X: msg.X, Y: msg.Y, Width: width, Height: height})
 		p.Panel.Model = updatedModel
 		if cmd != nil {
 			return p, cmd

@@ -2,6 +2,7 @@ package panelbubble
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+	tcellviews "github.com/gdamore/tcell/v2/views"
 )
 
 // TopLevelListPanel is a special case of ListPanel
@@ -18,6 +19,18 @@ type TopLevelListPanel struct {
 
 var _ tea.Model = &TopLevelListPanel{}
 var _ Focusable = &TopLevelListPanel{}
+
+func (m TopLevelListPanel) SetView(viewport *tcellviews.ViewPort) Focusable {
+	newListPanel := m.ListPanel.SetView(viewport)
+	m.ListPanel = newListPanel.(ListPanel)
+	return m
+}
+
+func (m TopLevelListPanel) Draw(force bool) Focusable {
+	newListPanel := m.ListPanel.Draw(force)
+	m.ListPanel = newListPanel.(ListPanel)
+	return m
+}
 
 func (m TopLevelListPanel) Init() tea.Cmd {
 	m.ListPanel.SetPath([]int{})

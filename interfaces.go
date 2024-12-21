@@ -2,6 +2,7 @@ package panelbubble
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+	tcellviews "github.com/gdamore/tcell/v2/views"
 )
 
 // Initiable is an interface that allows calling Init() on
@@ -48,6 +49,8 @@ type Focusable interface {
 	IsFocused() bool
 	GetPath() []int
 	SetPath(path []int) Focusable
+	Draw(force bool) Focusable
+	SetView(view *tcellviews.ViewPort) Focusable
 	tea.Model
 }
 

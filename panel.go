@@ -2,6 +2,7 @@ package panelbubble
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+	tcellviews "github.com/gdamore/tcell/v2/views"
 )
 
 type Panel struct {
@@ -11,6 +12,21 @@ type Panel struct {
 	Name         string
 	Workflow     WorkflowHandlerInterface
 	MsgForParent tea.Msg
+	view         tcellviews.View
+	redraw       bool
+}
+
+func (p Panel) SetView(view *tcellviews.ViewPort) Focusable {
+	p.view = view
+	return p
+}
+
+func (p Panel) Draw(force bool) Focusable {
+	str := p.View()
+	if p.view != nil {
+		tcellDrawHelper(str, p.view)
+	}
+	return p
 }
 
 func (p *Panel) SetMsgForParent(msg tea.Msg) {
@@ -138,6 +154,9 @@ func (p Panel) HandleFocus(msg tea.Msg) (Focusable, tea.Cmd) {
 }
 
 func (p Panel) HandleSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd) {
+	if p.view != nil {
+		p.view.Resize(msg.X, msg.Y, msg.Width, msg.Height)
+	}
 	if model, ok := p.Model.(HandlesSizeMsg); ok {
 		updatedModel, cmd := model.HandleSizeMsg(msg)
 		p.Model = updatedModel
