@@ -143,9 +143,9 @@ func (p *ShortCutPanel) HandleMessageFromChild(msg tea.Msg) tea.Cmd {
 
 func (p ShortCutPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	DebugPrintf("ShortCutPanel.Update() called for %v\n", p.GetPath())
+	p.redraw = false
 	m, cmd := p.updateHelper(msg)
 	n := m.(ShortCutPanel)
-	n.redraw = false
 	if cmd != nil {
 		n.redraw = true
 		return n, cmd
@@ -210,6 +210,7 @@ func GetStylingSize(s lipgloss.Style) (int, int) {
 
 func (p ShortCutPanel) HandleSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd) {
 	DebugPrintf("ShortCutPanel received size message: %+v\n", msg)
+	p.redraw = true
 	if p.view != nil {
 		p.view.Resize(msg.X, msg.Y, msg.Width, msg.Height)
 	}

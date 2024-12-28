@@ -97,6 +97,7 @@ func (p Panel) HandleMessage(msg tea.Msg) (Focusable, tea.Cmd) {
 func (p Panel) HandleFocusGranted(msg FocusGrantMsg) (Focusable, tea.Cmd) {
 	DebugPrintf("Panel %v received focus grant message: %T %+v\n", p.path, msg, msg)
 	p.focus = true
+	p.redraw = true
 	if p.Model != nil {
 		if model, ok := p.Model.(HandlesRecvFocus); ok {
 			updatedModel, cmd := model.HandleRecvFocus()
@@ -111,6 +112,9 @@ func (p Panel) HandleFocusGranted(msg FocusGrantMsg) (Focusable, tea.Cmd) {
 
 func (p Panel) HandleFocusRevoke() (Focusable, tea.Cmd) {
 	DebugPrintf("Panel %v received focus revoke message\n", p.path)
+	if p.focus {
+		p.redraw = true
+	}
 	p.focus = false
 	if p.Model != nil {
 		if model, ok := p.Model.(HandlesFocusRevoke); ok {

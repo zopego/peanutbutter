@@ -49,11 +49,11 @@ func (m TopLevelListPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 
-		updatedModel, cmd = m.ListPanel.Update(FocusGrantMsg{RoutePath: RoutePath{Path: msg.RequestedPath}, Relation: msg.Relation, WorkflowName: msg.WorkflowName})
-		m.ListPanel = updatedModel.(ListPanel)
-		if cmd != nil {
-			cmds = append(cmds, cmd)
+		// This ensures that a complete update is done before we send a focus grant message
+		newCmd := func() tea.Msg {
+			return FocusGrantMsg{RoutePath: RoutePath{Path: msg.RequestedPath}, Relation: msg.Relation, WorkflowName: msg.WorkflowName}
 		}
+		cmds = append(cmds, newCmd)
 		return m, tea.Batch(cmds...)
 
 	case tea.KeyMsg:
