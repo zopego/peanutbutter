@@ -21,12 +21,14 @@ func (p Panel) SetView(view *tcellviews.ViewPort) Focusable {
 	return p
 }
 
-func (p Panel) Draw(force bool) Focusable {
+func (p Panel) Draw(force bool) (Focusable, bool) {
+	DebugPrintf("Panel.Draw() called for %v. Redraw: %v, force: %v\n", p.path, p.redraw, force)
 	str := p.View()
 	if p.view != nil {
 		tcellDrawHelper(str, p.view)
+		return p, true
 	}
-	return p
+	return p, false
 }
 
 func (p *Panel) SetMsgForParent(msg tea.Msg) {

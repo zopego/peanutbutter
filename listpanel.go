@@ -36,18 +36,23 @@ func (p ListPanel) SetView(view *tcellviews.ViewPort) Focusable {
 	return p
 }
 
-func (p ListPanel) Draw(force bool) Focusable {
+func (p ListPanel) Draw(force bool) (Focusable, bool) {
+	redrawn := false
+	DebugPrintf("ListPanel.Draw() called for %v. Redraw: %v, force: %v\n", p.path, p.redraw, force)
 	continueForce := p.redraw || force
 	if p.Layout.Orientation == ZStacked {
-		p.Panels[p.Selected].Draw(continueForce)
+		newPanel, redraw := p.Panels[p.Selected].Draw(continueForce)
+		p.Panels[p.Selected] = newPanel.(Focusable)
+		redrawn = redrawn || redraw
 	} else {
 		for i, panel := range p.Panels {
-			newPanel := panel.Draw(continueForce)
+			newPanel, redraw := panel.Draw(continueForce)
 			p.Panels[i] = newPanel.(Focusable)
+			redrawn = redrawn || redraw
 		}
 	}
 	p.redraw = false
-	return p
+	return p, redrawn
 }
 
 func NewListPanel(models []Focusable, layout Layout) ListPanel {

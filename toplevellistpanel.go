@@ -26,10 +26,10 @@ func (m TopLevelListPanel) SetView(viewport *tcellviews.ViewPort) Focusable {
 	return m
 }
 
-func (m TopLevelListPanel) Draw(force bool) Focusable {
-	newListPanel := m.ListPanel.Draw(force)
+func (m TopLevelListPanel) Draw(force bool) (Focusable, bool) {
+	newListPanel, redraw := m.ListPanel.Draw(force)
 	m.ListPanel = newListPanel.(ListPanel)
-	return m
+	return m, redraw
 }
 
 func (m TopLevelListPanel) Init() tea.Cmd {

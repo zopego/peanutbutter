@@ -49,7 +49,7 @@ type Focusable interface {
 	IsFocused() bool
 	GetPath() []int
 	SetPath(path []int) Focusable
-	Draw(force bool) Focusable
+	Draw(force bool) (Focusable, bool)
 	SetView(view *tcellviews.ViewPort) Focusable
 	tea.Model
 }

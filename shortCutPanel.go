@@ -46,15 +46,17 @@ func (p ShortCutPanel) SetView(view *tcellviews.ViewPort) Focusable {
 	return p
 }
 
-func (p ShortCutPanel) Draw(force bool) Focusable {
+func (p ShortCutPanel) Draw(force bool) (Focusable, bool) {
 	if p.redraw || force {
+		DebugPrintf("ShortCutPanel.Draw() called for %v. Redraw: %v, force: %v\n", p.GetPath(), p.redraw, force)
 		str := p.View()
 		if p.view != nil {
 			tcellDrawHelper(str, p.view)
 		}
 		p.redraw = false
+		return p, true
 	}
-	return p
+	return p, false
 }
 
 func (p ShortCutPanel) GetMsgForParent() (tea.Model, tea.Msg) {
@@ -143,11 +145,11 @@ func (p ShortCutPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	DebugPrintf("ShortCutPanel.Update() called for %v\n", p.GetPath())
 	m, cmd := p.updateHelper(msg)
 	n := m.(ShortCutPanel)
+	n.redraw = false
 	if cmd != nil {
 		n.redraw = true
 		return n, cmd
 	}
-	n.redraw = true
 	return n, nil
 }
 
