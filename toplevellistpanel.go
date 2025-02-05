@@ -2,7 +2,6 @@ package panelbubble
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	tcellviews "github.com/gdamore/tcell/v2/views"
 )
 
 // TopLevelListPanel is a special case of ListPanel
@@ -14,36 +13,23 @@ import (
 // focus for key-strokes by passing them a ConsiderForGlobalShortcutMsg
 // before passing a key-stroke as a regular key-stroke message
 type TopLevelListPanel struct {
-	ListPanel
+	*ListPanel
 }
 
 var _ tea.Model = &TopLevelListPanel{}
 var _ Focusable = &TopLevelListPanel{}
 
-func (m TopLevelListPanel) SetView(viewport *tcellviews.ViewPort) Focusable {
-	newListPanel := m.ListPanel.SetView(viewport)
-	m.ListPanel = newListPanel.(ListPanel)
-	return m
-}
-
-func (m TopLevelListPanel) Draw(force bool) (Focusable, bool) {
-	newListPanel, redraw := m.ListPanel.Draw(force)
-	m.ListPanel = newListPanel.(ListPanel)
-	return m, redraw
-}
-
-func (m TopLevelListPanel) Init() tea.Cmd {
+func (m *TopLevelListPanel) Init() tea.Cmd {
 	m.ListPanel.SetPath([]int{})
 	return m.ListPanel.Init()
 }
 
-func (m TopLevelListPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *TopLevelListPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	DebugPrintf("TopLevelListPanel received message: %T %+v\n", msg, msg)
 	switch msg := msg.(type) {
 	case FocusRequestMsg:
 		cmds := []tea.Cmd{}
-		updatedModel, cmd := m.ListPanel.Update(FocusRevokeMsg{})
-		m.ListPanel = updatedModel.(ListPanel)
+		_, cmd := m.ListPanel.Update(FocusRevokeMsg{})
 
 		if cmd != nil {
 			cmds = append(cmds, cmd)
@@ -60,8 +46,7 @@ func (m TopLevelListPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// We propagate key messages as global shortcuts initially
 		// if no panel consumes it, we will send it out as a propagate key message
 		globalShortcutMsg := ConsiderForGlobalShortcutMsg{Msg: msg}
-		updatedModel, cmd := m.ListPanel.Update(globalShortcutMsg)
-		m.ListPanel = updatedModel.(ListPanel)
+		_, cmd := m.ListPanel.Update(globalShortcutMsg)
 		if cmd != nil {
 			return m, cmd
 		} else {
@@ -71,15 +56,11 @@ func (m TopLevelListPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case PropagateKeyMsg:
-		updatedModel, cmd := m.ListPanel.Update(msg.KeyMsg)
-		m.ListPanel = updatedModel.(ListPanel)
-		if cmd != nil {
-			return m, cmd
-		}
+		_, cmd := m.ListPanel.Update(msg.KeyMsg)
+		return m, cmd
 
 	default:
-		updatedModel, cmd := m.ListPanel.Update(msg)
-		m.ListPanel = updatedModel.(ListPanel)
+		_, cmd := m.ListPanel.Update(msg)
 		return m, cmd
 	}
 

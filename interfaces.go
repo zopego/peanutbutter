@@ -28,7 +28,7 @@ type HandlesFocusRevoke interface {
 // when the down arrow key is pressed on the last item of a list, focus is passed
 // to the next panel in the hierarchy.
 type CanSendMsgToParent interface {
-	GetMsgForParent() (tea.Model, tea.Msg)
+	GetMsgForParent() tea.Msg
 }
 
 func IsSamePath(path1, path2 []int) bool {
@@ -48,9 +48,9 @@ func IsSamePath(path1, path2 []int) bool {
 type Focusable interface {
 	IsFocused() bool
 	GetPath() []int
-	SetPath(path []int) Focusable
-	Draw(force bool) (Focusable, bool)
-	SetView(view *tcellviews.ViewPort) Focusable
+	SetPath(path []int)
+	Draw(force bool) bool
+	SetView(view *tcellviews.ViewPort)
 	tea.Model
 }
 

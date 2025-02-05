@@ -16,29 +16,28 @@ type Panel struct {
 	redraw       bool
 }
 
-func (p Panel) SetView(view *tcellviews.ViewPort) Focusable {
+func (p *Panel) SetView(view *tcellviews.ViewPort) {
 	p.view = view
-	return p
 }
 
-func (p Panel) Draw(force bool) (Focusable, bool) {
+func (p *Panel) Draw(force bool) bool {
 	DebugPrintf("Panel.Draw() called for %v. Redraw: %v, force: %v\n", p.path, p.redraw, force)
 	str := p.View()
 	if p.view != nil {
 		tcellDrawHelper(str, p.view)
-		return p, true
+		return true
 	}
-	return p, false
+	return false
 }
 
 func (p *Panel) SetMsgForParent(msg tea.Msg) {
 	p.MsgForParent = msg
 }
 
-func (p Panel) GetMsgForParent() (tea.Model, tea.Msg) {
+func (p *Panel) GetMsgForParent() tea.Msg {
 	msg := p.MsgForParent
 	p.MsgForParent = nil
-	return p, msg
+	return msg
 }
 
 var _ CanSendMsgToParent = &Panel{}
@@ -48,16 +47,15 @@ var _ Focusable = &Panel{}
 // var _ HandlesRecvFocus = &Panel{}
 // var _ HandlesFocusRevoke = &Panel{}
 
-func (p Panel) IsFocused() bool {
+func (p *Panel) IsFocused() bool {
 	return p.focus
 }
 
-func (p Panel) SetPath(path []int) Focusable {
+func (p *Panel) SetPath(path []int) {
 	p.path = path
-	return p
 }
 
-func (p Panel) Init() tea.Cmd {
+func (p *Panel) Init() tea.Cmd {
 	DebugPrintf("Panel.Init() called for %v\n", p.GetPath())
 	cmd := p.Model.Init()
 	if cmd != nil {
@@ -66,7 +64,7 @@ func (p Panel) Init() tea.Cmd {
 	return nil
 }
 
-func (p Panel) View() string {
+func (p *Panel) View() string {
 	return p.Model.View()
 }
 
@@ -74,27 +72,27 @@ func (p *Panel) RoutedCmd(cmd tea.Cmd) tea.Cmd {
 	return MakeAutoRoutedCmd(cmd, p.path)
 }
 
-func (p Panel) GetPath() []int {
+func (p *Panel) GetPath() []int {
 	return p.path
 }
 
-func (p Panel) HandleMessage(msg tea.Msg) (Focusable, tea.Cmd) {
+func (p *Panel) HandleMessage(msg tea.Msg) tea.Cmd {
 	DebugPrintf("Panel %v received message: %T %+v\n", p.path, msg, msg)
 	updatedModel, cmd := p.Model.Update(msg)
 	p.Model = updatedModel
 
 	if model, ok := p.Model.(CanSendMsgToParent); ok {
-		updatedModel, msgForParent := model.GetMsgForParent()
+		msgForParent := model.GetMsgForParent()
 		p.Model = updatedModel
 		if msgForParent != nil {
 			p.SetMsgForParent(msgForParent)
 		}
 	}
 
-	return p, p.RoutedCmd(cmd)
+	return p.RoutedCmd(cmd)
 }
 
-func (p Panel) HandleFocusGranted(msg FocusGrantMsg) (Focusable, tea.Cmd) {
+func (p *Panel) HandleFocusGranted(msg FocusGrantMsg) tea.Cmd {
 	DebugPrintf("Panel %v received focus grant message: %T %+v\n", p.path, msg, msg)
 	p.focus = true
 	p.redraw = true
@@ -103,14 +101,14 @@ func (p Panel) HandleFocusGranted(msg FocusGrantMsg) (Focusable, tea.Cmd) {
 			updatedModel, cmd := model.HandleRecvFocus()
 			p.Model = updatedModel
 			if cmd != nil {
-				return p, cmd
+				return cmd
 			}
 		}
 	}
-	return p, nil
+	return nil
 }
 
-func (p Panel) HandleFocusRevoke() (Focusable, tea.Cmd) {
+func (p *Panel) HandleFocusRevoke() tea.Cmd {
 	DebugPrintf("Panel %v received focus revoke message\n", p.path)
 	if p.focus {
 		p.redraw = true
@@ -121,14 +119,14 @@ func (p Panel) HandleFocusRevoke() (Focusable, tea.Cmd) {
 			updatedModel, cmd := model.HandleRecvFocusRevoke()
 			p.Model = updatedModel
 			if cmd != nil {
-				return p, cmd
+				return cmd
 			}
 		}
 	}
-	return p, nil
+	return nil
 }
 
-func (p Panel) HandleFocus(msg tea.Msg) (Focusable, tea.Cmd) {
+func (p *Panel) HandleFocus(msg tea.Msg) tea.Cmd {
 	DebugPrintf("Panel %v received focus message: %T %+v\n", p.path, msg, msg)
 	switch msg := msg.(type) {
 	case FocusGrantMsg:
@@ -149,17 +147,17 @@ func (p Panel) HandleFocus(msg tea.Msg) (Focusable, tea.Cmd) {
 					return p.HandleFocusGranted(msg)
 				}
 			}
-			return p, cmd
+			return cmd
 		}
 	case FocusRevokeMsg:
 		//fmt.Printf("Panel received focus revoke\n")
 		// Revoke focus from this panel
 		return p.HandleFocusRevoke()
 	}
-	return p, nil
+	return nil
 }
 
-func (p Panel) HandleSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd) {
+func (p *Panel) HandleSizeMsg(msg ResizeMsg) tea.Cmd {
 	if p.view != nil {
 		p.view.Resize(msg.X, msg.Y, msg.Width, msg.Height)
 	}
@@ -167,24 +165,29 @@ func (p Panel) HandleSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd) {
 		updatedModel, cmd := model.HandleSizeMsg(msg)
 		p.Model = updatedModel
 		if cmd != nil {
-			return p, cmd
+			return cmd
 		}
 	}
-	return p, nil
+	return nil
 }
 
-func (p Panel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (p *Panel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	DebugPrintf("Panel %v received message: %T %+v\n", p.path, msg, msg)
-	switch msg := (msg).(type) {
+	switch msg := msg.(type) {
 	case FocusGrantMsg, FocusRevokeMsg:
-		return p.HandleFocus(msg)
+		cmd := p.HandleFocus(msg)
+		return p, cmd
 	case AutoRoutedMsg:
-		return p.HandleMessage(msg.Msg)
+		cmd := p.HandleMessage(msg.Msg)
+		return p, cmd
 	case ResizeMsg:
-		return p.HandleSizeMsg(msg)
+		cmd := p.HandleSizeMsg(msg)
+		return p, cmd
 	case BroadcastMsg:
-		return p.HandleMessage(msg.Msg)
+		cmd := p.HandleMessage(msg.Msg)
+		return p, cmd
 	default:
-		return p.HandleMessage(msg)
+		cmd := p.HandleMessage(msg)
+		return p, cmd
 	}
 }

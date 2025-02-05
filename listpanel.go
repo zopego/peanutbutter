@@ -26,33 +26,29 @@ var _ tea.Model = &ListPanel{}
 var _ Focusable = &ListPanel{}
 var _ CanSendMsgToParent = &ListPanel{}
 
-func (p ListPanel) SetView(view *tcellviews.ViewPort) Focusable {
+func (p *ListPanel) SetView(view *tcellviews.ViewPort) {
 	p.view = view
 	for i, panel := range p.Panels {
 		newView := tcellviews.NewViewPort(p.view, 0, 0, -1, -1)
-		newPanel := panel.SetView(newView)
-		p.Panels[i] = newPanel.(Focusable)
+		panel.SetView(newView)
+		p.Panels[i] = panel.(Focusable)
 	}
-	return p
 }
 
-func (p ListPanel) Draw(force bool) (Focusable, bool) {
+func (p *ListPanel) Draw(force bool) bool {
 	redrawn := false
 	DebugPrintf("ListPanel.Draw() called for %v. Redraw: %v, force: %v\n", p.path, p.redraw, force)
 	continueForce := p.redraw || force
 	if p.Layout.Orientation == ZStacked {
-		newPanel, redraw := p.Panels[p.Selected].Draw(continueForce)
-		p.Panels[p.Selected] = newPanel.(Focusable)
-		redrawn = redrawn || redraw
+		redrawn = p.Panels[p.Selected].Draw(continueForce)
 	} else {
 		for i, panel := range p.Panels {
-			newPanel, redraw := panel.Draw(continueForce)
-			p.Panels[i] = newPanel.(Focusable)
-			redrawn = redrawn || redraw
+			redrawn = redrawn || panel.Draw(continueForce)
+			p.Panels[i] = panel.(Focusable)
 		}
 	}
 	p.redraw = false
-	return p, redrawn
+	return redrawn
 }
 
 func NewListPanel(models []Focusable, layout Layout) ListPanel {
@@ -68,17 +64,17 @@ func NewListPanel(models []Focusable, layout Layout) ListPanel {
 	}
 }
 
-func (m ListPanel) GetMsgForParent() (tea.Model, tea.Msg) {
+func (m *ListPanel) GetMsgForParent() tea.Msg {
 	msg := m.MsgForParent
 	m.MsgForParent = nil
-	return m, msg
+	return msg
 }
 
 func (m *ListPanel) SetMsgForParent(msg tea.Msg) {
 	m.MsgForParent = msg
 }
 
-func (m ListPanel) Init() tea.Cmd {
+func (m *ListPanel) Init() tea.Cmd {
 	DebugPrintf("ListPanel.Init() called for %v\n", m.path)
 	var cmds []tea.Cmd
 	for _, panel := range m.Panels {
@@ -95,17 +91,16 @@ func (m ListPanel) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-func (m ListPanel) SetPath(path []int) Focusable {
+func (m *ListPanel) SetPath(path []int) {
 	m.path = path
 	for i, panel := range m.Panels {
 		if focusable, ok := panel.(Focusable); ok {
-			m.Panels[i] = focusable.SetPath(append(m.path, i))
+			focusable.SetPath(append(m.path, i))
 		}
 	}
-	return m
 }
 
-func (m ListPanel) IsFocused() bool {
+func (m *ListPanel) IsFocused() bool {
 	// A ListPanel is focused if any of its children are focused
 	for _, panel := range m.Panels {
 		if panel.IsFocused() {
@@ -115,7 +110,7 @@ func (m ListPanel) IsFocused() bool {
 	return false
 }
 
-func (m ListPanel) GetPath() []int {
+func (m *ListPanel) GetPath() []int {
 	return m.path
 }
 
@@ -124,14 +119,14 @@ type HasView interface {
 	View() string
 }
 
-func (m ListPanel) View() string {
+func (m *ListPanel) View() string {
 	if m.Layout.Orientation == ZStacked {
 		return m.Panels[m.Selected].View()
 	}
 	return m.ListView()
 }
 
-func (m ListPanel) ListView() string {
+func (m *ListPanel) ListView() string {
 	var views []string
 	for _, panel := range m.Panels {
 		if model, ok := panel.(HasView); ok {
@@ -145,35 +140,33 @@ func (m ListPanel) ListView() string {
 	return lipgloss.JoinVertical(lipgloss.Left, views...)
 }
 
-func (m ListPanel) HandleZStackedMsg(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
+func (m *ListPanel) HandleZStackedMsg(msg tea.Msg) (tea.Cmd, bool) {
 	if msg, ok := msg.(ConsiderForLocalShortcutMsg); ok {
-		updatedPanel, cmd := m.Panels[m.Selected].Update(msg)
-		m.Panels[m.Selected] = updatedPanel.(Focusable)
-		return m, cmd, true
+		_, cmd := m.Panels[m.Selected].Update(msg)
+		return cmd, true
 	}
 	if msg, ok := msg.(SelectTabIndexMsg); ok {
 		if msg.ListPanelName == m.Name {
-			m, cmd := m.SetSelected(msg.Index)
+			m.SetSelected(msg.Index)
 			m.redraw = true
-			return m, cmd, true
+			return nil, true
 		}
 	}
-	return m, nil, false
+	return nil, false
 }
 
-func (m ListPanel) Update2(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *ListPanel) UpdateInner(msg tea.Msg) tea.Cmd {
 	if msg, ok := msg.(ResizeMsg); ok {
 		return m.HandleSizeMsg(msg)
 	}
 
 	if m.Layout.Orientation == ZStacked {
-		updatedModel, cmd, handled := m.HandleZStackedMsg(msg)
-		m = updatedModel.(ListPanel)
-		if cmd != nil {
-			return m, cmd
+		cmd, handled := m.HandleZStackedMsg(msg)
+		if handled {
+			return cmd
 		}
 		if handled {
-			return m, nil
+			return nil
 		}
 	}
 	DebugPrintf("ListPanel %v received message: %T %+v\n", m.path, msg, msg)
@@ -185,36 +178,31 @@ func (m ListPanel) Update2(msg tea.Msg) (tea.Model, tea.Cmd) {
 				updatedModel, cmd := panel.Update(msg.Msg)
 				m.Panels[i] = updatedModel.(Focusable)
 				if cmd != nil {
-					return m, cmd
+					return cmd
 				}
 			}
 		}
 	case UntypedMsgType:
 		// this really should not happen
-		return m, nil
+		return nil
 
 	case RoutedMsgType:
 		l_mypath := len(m.path)
 		l_msgpath := len(msg.GetRoutePath())
 		if l_mypath == l_msgpath {
 			// This message is destined for this listpanel
-			updatedModel, cmd := m.HandleRoutedMessage(msg.Msg)
-			m = updatedModel.(ListPanel)
-			if cmd != nil {
-				return m, cmd
-			}
+			return m.HandleRoutedMessage(msg.Msg)
 		} else {
 			nextIdx := msg.GetRoutePath()[l_mypath]
 			if nextIdx < 0 || nextIdx > len(m.Panels) {
-				return m, nil
+				return nil
 			}
-			updatedModel, cmd := m.Panels[nextIdx].Update(msg.Msg)
-			m.Panels[nextIdx] = updatedModel.(Focusable)
+			_, cmd := m.Panels[nextIdx].Update(msg.Msg)
 			if cmd != nil {
-				return m, cmd
+				return cmd
 			}
 		}
-		return m, nil
+		return nil
 
 	case BroadcastMsgType:
 		cmds := []tea.Cmd{}
@@ -228,40 +216,36 @@ func (m ListPanel) Update2(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if len(cmds) > 0 {
-			return m, tea.Batch(cmds...)
+			return tea.Batch(cmds...)
 		}
-		return m, nil
+		return nil
 
 	case RequestMsgType:
-		return m, nil
+		return nil
 	}
-	return m, nil
+
+	return nil
 }
 
-func (m ListPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *ListPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	cmds := []tea.Cmd{}
-	newm, cmd := m.Update2(msg)
-	m = newm.(ListPanel)
+	cmd := m.UpdateInner(msg)
 	if cmd != nil {
 		cmds = append(cmds, cmd)
 	}
 	for i, panel := range m.Panels {
 		if panel, ok := panel.(CanSendMsgToParent); ok {
-			updatedPanel, msg := panel.GetMsgForParent()
-			m.Panels[i] = updatedPanel.(Focusable)
+			msg := panel.GetMsgForParent()
+			m.Panels[i] = panel.(Focusable)
 			if msg != nil {
-				updatedModel, cmd := m.HandleMessageFromChild(msg)
-				m = updatedModel.(ListPanel)
-				if cmd != nil {
-					cmds = append(cmds, cmd)
-				}
+				return m, m.HandleMessageFromChild(msg)
 			}
 		}
 	}
 	return m, tea.Batch(cmds...)
 }
 
-func (m ListPanel) HandleMessageFromChild(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *ListPanel) HandleMessageFromChild(msg tea.Msg) tea.Cmd {
 	DebugPrintf("ListPanel %v received message from child: %T %+v\n", m.path, msg, msg)
 	if msg, ok := msg.(GeometricFocusRequestMsg); ok {
 		if m.Layout.Orientation == Horizontal && (msg.Direction == Left || msg.Direction == Right) {
@@ -280,39 +264,37 @@ func (m ListPanel) HandleMessageFromChild(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if focusIndex >= 0 && focusIndex < len(m.Panels) {
 				path := append(m.path, focusIndex)
-				cmd := func() tea.Msg {
+				return func() tea.Msg {
 					return FocusRequestMsg{Relation: Self, RequestedPath: path}
 				}
-				return m, cmd
 			}
 		}
 	}
 	m.SetMsgForParent(msg)
-	return m, nil
+	return nil
 }
 
-func (m ListPanel) HandleRoutedMessage(msg tea.Msg) (Focusable, tea.Cmd) {
+func (m *ListPanel) HandleRoutedMessage(msg tea.Msg) tea.Cmd {
 	DebugPrintf("ListPanel %v received routed message: %T %+v\n", m.path, msg, msg)
 	if msg, ok := msg.(FocusGrantMsg); ok {
 		// we'll add a path segment to the first panel in the list
 		if len(m.Panels) > 0 {
 			newmsg := msg
 			newmsg.RoutePath.Path = append(newmsg.RoutePath.Path, 0)
-			updatedPanel, cmd := m.Panels[0].Update(newmsg)
-			m.Panels[0] = updatedPanel.(Focusable)
+			_, cmd := m.Panels[0].Update(newmsg)
 			if cmd != nil {
-				return m, cmd
+				return cmd
 			}
 		}
 	}
-	return m, nil
+	return nil
 }
 
 func (m ListPanel) GetLayout() Layout {
 	return m.Layout
 }
 
-func (m ListPanel) HandleZStackedSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd) {
+func (m *ListPanel) HandleZStackedSizeMsg(msg ResizeMsg) tea.Cmd {
 	cmds := []tea.Cmd{}
 	for i, panel := range m.Panels {
 		newMsg := ResizeMsg{
@@ -321,19 +303,19 @@ func (m ListPanel) HandleZStackedSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd) {
 			Width:  msg.Width,
 			Height: msg.Height,
 		}
-		updatedModel, cmd := panel.Update(newMsg)
-		m.Panels[i] = updatedModel.(Focusable)
+		_, cmd := panel.Update(newMsg)
+		m.Panels[i] = panel.(Focusable)
 		if cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 	}
 	if len(cmds) > 0 {
-		return m, tea.Batch(cmds...)
+		return tea.Batch(cmds...)
 	}
-	return m, nil
+	return nil
 }
 
-func (m ListPanel) HandleSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd) {
+func (m *ListPanel) HandleSizeMsg(msg ResizeMsg) tea.Cmd {
 	DebugPrintf("ListPanel %v received size message: %+v\n", m.path, msg)
 	if m.view != nil {
 		m.view.Resize(msg.X, msg.Y, msg.Width, msg.Height)
@@ -384,9 +366,9 @@ func (m ListPanel) HandleSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if len(cmds) > 0 {
-		return m, tea.Batch(cmds...)
+		return tea.Batch(cmds...)
 	}
-	return m, nil
+	return nil
 }
 
 func (m *ListPanel) GetSelected() tea.Model {
@@ -401,10 +383,10 @@ func (m *ListPanel) setSelectedModel(model Focusable) {
 	m.Panels[m.Selected] = model
 }
 
-func (m ListPanel) SetSelected(i int) (ListPanel, tea.Cmd) {
+func (m *ListPanel) SetSelected(i int) tea.Cmd {
 	DebugPrintf("ListPanel %v setting selected to %v\n", m.path, i)
 	m.Selected = i
-	return m, func() tea.Msg {
+	return func() tea.Msg {
 		return SelectedTabIndexMsg{Index: i, ListPanelName: m.Name}
 	}
 }
