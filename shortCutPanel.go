@@ -20,6 +20,7 @@ type ShortCutPanelConfig struct {
 	PanelStyle                  PanelStyle
 	EnableWorkflowFocusMovement bool
 	EnableHorizontalMovement    bool
+	EnableVerticalMovement      bool
 }
 
 // ShortCutPanel is an extension of Panel that can handle
@@ -35,6 +36,69 @@ type ShortCutPanelConfig struct {
 type ShortCutPanel struct {
 	ShortCutPanelConfig
 	*Panel
+}
+
+type ShortCutPanelOption func(*ShortCutPanel)
+
+func WithShortcuts(global, local string) ShortCutPanelOption {
+	return func(config *ShortCutPanel) {
+		if global != "" {
+			config.GlobalShortcut = global
+		}
+		if local != "" {
+			config.LocalShortcut = local
+		}
+	}
+}
+
+func WithContextualHelp(help string) ShortCutPanelOption {
+	return func(config *ShortCutPanel) {
+		config.ContextualHelp = help
+	}
+}
+
+func WithTitle(title string) ShortCutPanelOption {
+	return func(config *ShortCutPanel) {
+		config.Title = title
+	}
+}
+
+func WithTitleStyle(style lipgloss.Style) ShortCutPanelOption {
+	return func(config *ShortCutPanel) {
+		config.TitleStyle = style
+	}
+}
+
+func WithPanelStyle(style PanelStyle) ShortCutPanelOption {
+	return func(config *ShortCutPanel) {
+		config.PanelStyle = style
+	}
+}
+
+func WithEnableMovement(horizontal, vertical bool) ShortCutPanelOption {
+	return func(config *ShortCutPanel) {
+		config.EnableHorizontalMovement = horizontal
+		config.EnableVerticalMovement = vertical
+	}
+}
+
+func WithConfig(config ShortCutPanelConfig) ShortCutPanelOption {
+	return func(panel *ShortCutPanel) {
+		panel.ShortCutPanelConfig = config
+	}
+}
+
+func NewShortCutPanel(panel *Panel, opts ...ShortCutPanelOption) *ShortCutPanel {
+	spanel := &ShortCutPanel{}
+	for _, opt := range opts {
+		opt(spanel)
+	}
+	if panel != nil {
+		spanel.Panel = panel
+	} else {
+		spanel.Panel = NewPanel()
+	}
+	return spanel
 }
 
 var _ tea.Model = &ShortCutPanel{}
@@ -130,6 +194,17 @@ func (p *ShortCutPanel) HandleMessageFromChild(msg tea.Msg) tea.Cmd {
 						}
 					}
 				}
+			}
+		}
+		if p.EnableVerticalMovement {
+			switch msg.String() {
+			case "up", "down":
+				direction := Up
+				if msg.String() == "down" {
+					direction = Down
+				}
+				p.Panel.SetMsgForParent(GeometricFocusRequestMsg{Direction: direction})
+				return nil
 			}
 		}
 		return func() tea.Msg {

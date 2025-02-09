@@ -16,6 +16,28 @@ type Panel struct {
 	redraw       bool
 }
 
+type PanelOption func(*Panel)
+
+func WithModel(model tea.Model) PanelOption {
+	return func(panel *Panel) {
+		panel.Model = model
+	}
+}
+
+func WithName(name string) PanelOption {
+	return func(panel *Panel) {
+		panel.Name = name
+	}
+}
+
+func NewPanel(opts ...PanelOption) *Panel {
+	panel := &Panel{}
+	for _, opt := range opts {
+		opt(panel)
+	}
+	return panel
+}
+
 func (p *Panel) SetView(view *tcellviews.ViewPort) {
 	p.view = view
 }
