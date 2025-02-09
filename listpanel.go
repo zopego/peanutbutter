@@ -245,28 +245,52 @@ func (m *ListPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
+func (m *ListPanel) GetFocusIndex() int {
+	for i, panel := range m.Panels {
+		if panel.IsFocused() {
+			return i
+		}
+	}
+	return -1
+}
+
+func handleFocusIndex(focusIndex int, direction Direction, len int) int {
+	if direction == Up {
+		focusIndex--
+	}
+	if direction == Down {
+		focusIndex++
+	}
+	if direction == Left {
+		focusIndex--
+	}
+	if direction == Right {
+		focusIndex++
+	}
+
+	return ((focusIndex % len) + len) % len
+}
+
 func (m *ListPanel) HandleMessageFromChild(msg tea.Msg) tea.Cmd {
 	DebugPrintf("ListPanel %v received message from child: %T %+v\n", m.path, msg, msg)
 	if msg, ok := msg.(GeometricFocusRequestMsg); ok {
+		focusIndex := m.GetFocusIndex()
+		if focusIndex == -1 {
+			return nil
+		}
 		if m.Layout.Orientation == Horizontal && (msg.Direction == Left || msg.Direction == Right) {
 			// first, lets find the currently focused panel
-			focusIndex := -1
-			for i, panel := range m.Panels {
-				if panel.IsFocused() {
-					focusIndex = i
-					break
-				}
+			focusIndex = handleFocusIndex(focusIndex, msg.Direction, len(m.Panels))
+			path := append(m.path, focusIndex)
+			return func() tea.Msg {
+				return FocusRequestMsg{Relation: Self, RequestedPath: path}
 			}
-			if msg.Direction == Left {
-				focusIndex--
-			} else {
-				focusIndex++
-			}
-			if focusIndex >= 0 && focusIndex < len(m.Panels) {
-				path := append(m.path, focusIndex)
-				return func() tea.Msg {
-					return FocusRequestMsg{Relation: Self, RequestedPath: path}
-				}
+		}
+		if m.Layout.Orientation == Vertical && (msg.Direction == Up || msg.Direction == Down) {
+			focusIndex = handleFocusIndex(focusIndex, msg.Direction, len(m.Panels))
+			path := append(m.path, focusIndex)
+			return func() tea.Msg {
+				return FocusRequestMsg{Relation: Self, RequestedPath: path}
 			}
 		}
 	}
