@@ -2,6 +2,7 @@ package panelbubble
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+	tcell "github.com/gdamore/tcell/v2"
 )
 
 // TopLevelListPanel is a special case of ListPanel
@@ -42,21 +43,21 @@ func (m *TopLevelListPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, newCmd)
 		return m, tea.Batch(cmds...)
 
-	case tea.KeyMsg:
+	case *tcell.EventKey:
 		// We propagate key messages as global shortcuts initially
 		// if no panel consumes it, we will send it out as a propagate key message
-		globalShortcutMsg := ConsiderForGlobalShortcutMsg{Msg: msg}
+		globalShortcutMsg := ConsiderForGlobalShortcutMsg{EventKey: msg}
 		_, cmd := m.ListPanel.Update(globalShortcutMsg)
 		if cmd != nil {
 			return m, cmd
 		} else {
 			return m, func() tea.Msg {
-				return PropagateKeyMsg{KeyMsg: msg}
+				return PropagateKeyMsg{EventKey: msg}
 			}
 		}
 
 	case PropagateKeyMsg:
-		_, cmd := m.ListPanel.Update(msg.KeyMsg)
+		_, cmd := m.ListPanel.Update(msg.EventKey)
 		return m, cmd
 
 	default:

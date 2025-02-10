@@ -1,6 +1,9 @@
 package panelbubble
 
-import tea "github.com/charmbracelet/bubbletea"
+import (
+	tea "github.com/charmbracelet/bubbletea"
+	tcell "github.com/gdamore/tcell/v2"
+)
 
 // There are 4 types of messages:
 // 1. Request messages: messages that are sent to the top level panel
@@ -19,6 +22,38 @@ const (
 	NextWorkflow
 	PrevWorkflow
 )
+
+type KeyDef struct {
+	Key       tcell.Key
+	Modifiers tcell.ModMask
+	Rune      rune
+}
+
+type KeyBinding struct {
+	KeyDefs   []KeyDef
+	ShortHelp string
+	LongHelp  string
+	Enabled   bool
+}
+
+func NewKeyBinding(keyDefs []KeyDef, enabled bool, shortHelp string, longHelp string) *KeyBinding {
+	return &KeyBinding{KeyDefs: keyDefs, ShortHelp: shortHelp, LongHelp: longHelp, Enabled: enabled}
+}
+
+func (keybinding *KeyBinding) IsEnabled() bool {
+	return keybinding.Enabled && len(keybinding.KeyDefs) > 0
+}
+
+func (keybinding *KeyBinding) IsMatch(eventKey *tcell.EventKey) bool {
+	for _, keyDef := range keybinding.KeyDefs {
+		if eventKey.Key() == keyDef.Key &&
+			eventKey.Modifiers() == keyDef.Modifiers &&
+			eventKey.Rune() == keyDef.Rune {
+			return true
+		}
+	}
+	return false
+}
 
 type RequestMsgType struct {
 	Msg tea.Msg
@@ -116,7 +151,7 @@ func MsgUsedCmd() tea.Cmd {
 }
 
 type ConsiderForLocalShortcutMsg struct {
-	Msg tea.KeyMsg
+	EventKey *tcell.EventKey
 	RoutePath
 }
 
@@ -128,7 +163,7 @@ func (msg ConsiderForLocalShortcutMsg) AsRouteTypedMsg() tea.Msg {
 }
 
 type ConsiderForGlobalShortcutMsg struct {
-	Msg tea.KeyMsg
+	EventKey *tcell.EventKey
 }
 
 func (msg ConsiderForGlobalShortcutMsg) AsRouteTypedMsg() tea.Msg {
@@ -162,7 +197,7 @@ func (msg BroadcastMsg) AsRouteTypedMsg() tea.Msg {
 }
 
 type PropagateKeyMsg struct {
-	tea.KeyMsg
+	EventKey *tcell.EventKey
 }
 
 type SelectedTabIndexMsg struct {
@@ -188,6 +223,9 @@ func GetMessageHandlingType(msg tea.Msg) tea.Msg {
 		return msg.AsRouteTypedMsg()
 	}
 	if msg, ok := msg.(tea.KeyMsg); ok {
+		return FocusPropagatedMsgType{Msg: msg}
+	}
+	if msg, ok := msg.(*tcell.EventKey); ok {
 		return FocusPropagatedMsgType{Msg: msg}
 	}
 	return UntypedMsgType{Msg: msg}

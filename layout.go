@@ -3,7 +3,7 @@ package panelbubble
 import (
 	"fmt"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tcell "github.com/gdamore/tcell/v2"
 )
 
 type Orientation int
@@ -114,11 +114,11 @@ func (l ListPanel) AreDimensionsValid(printErrors bool) bool {
 }
 
 type ResizeMsg struct {
-	tea.Msg
-	X      int
-	Y      int
-	Width  int
-	Height int
+	EventResize *tcell.EventResize
+	X           int
+	Y           int
+	Width       int
+	Height      int
 }
 
 // Here we assume that the layout is valid

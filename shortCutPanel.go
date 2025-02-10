@@ -3,6 +3,7 @@ package panelbubble
 import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	tcell "github.com/gdamore/tcell/v2"
 	tcellviews "github.com/gdamore/tcell/v2/views"
 )
 
@@ -12,8 +13,8 @@ type PanelStyle struct {
 }
 
 type ShortCutPanelConfig struct {
-	GlobalShortcut              string
-	LocalShortcut               string
+	GlobalShortcut              KeyBinding
+	LocalShortcut               KeyBinding
 	ContextualHelp              string
 	Title                       string
 	TitleStyle                  lipgloss.Style
@@ -36,18 +37,20 @@ type ShortCutPanelConfig struct {
 type ShortCutPanel struct {
 	ShortCutPanelConfig
 	*Panel
+	redraw bool
 }
 
 type ShortCutPanelOption func(*ShortCutPanel)
 
-func WithShortcuts(global, local string) ShortCutPanelOption {
+func WithGlobalShortcut(shortcut KeyBinding) ShortCutPanelOption {
 	return func(config *ShortCutPanel) {
-		if global != "" {
-			config.GlobalShortcut = global
-		}
-		if local != "" {
-			config.LocalShortcut = local
-		}
+		config.GlobalShortcut = shortcut
+	}
+}
+
+func WithLocalShortcut(shortcut KeyBinding) ShortCutPanelOption {
+	return func(config *ShortCutPanel) {
+		config.LocalShortcut = shortcut
 	}
 }
 
@@ -101,35 +104,35 @@ func NewShortCutPanel(panel *Panel, opts ...ShortCutPanelOption) *ShortCutPanel 
 	return spanel
 }
 
-var _ tea.Model = &ShortCutPanel{}
-var _ Focusable = &ShortCutPanel{}
-var _ CanSendMsgToParent = &ShortCutPanel{}
+// var _ tea.Model = &ShortCutPanel{}
+var _ IPanel = &ShortCutPanel{}
+
+//var _ CanSendMsgToParent = &ShortCutPanel{}
 
 func (p *ShortCutPanel) SetView(view *tcellviews.ViewPort) {
 	p.view = view
 }
 
 func (p *ShortCutPanel) Draw(force bool) bool {
-	if p.redraw || force {
+	childRedraw := p.Panel.Draw(force)
+	if p.redraw || force || childRedraw {
 		DebugPrintf("ShortCutPanel.Draw() called for %v. Redraw: %v, force: %v\n", p.GetPath(), p.redraw, force)
-		str := p.View()
-		if p.view != nil {
-			tcellDrawHelper(str, p.view)
-		}
+		str := p.borderView()
+		tcellDrawHelper(str, p.view)
 		p.redraw = false
 		return true
 	}
 	return false
 }
 
-func (p *ShortCutPanel) GetMsgForParent() tea.Msg {
+/* func (p *ShortCutPanel) GetMsgForParent() tea.Msg {
 	msg := p.Panel.GetMsgForParent()
 	return msg
-}
+} */
 
-func (p *ShortCutPanel) SetMsgForParent(msg tea.Msg) {
+/* func (p *ShortCutPanel) SetMsgForParent(msg tea.Msg) {
 	p.Panel.SetMsgForParent(msg)
-}
+} */
 
 func (p ShortCutPanel) Init() tea.Cmd {
 	DebugPrintf("ShortCutPanel.Init() called for %v\n", p.GetPath())
@@ -146,130 +149,92 @@ func (p ShortCutPanel) Init() tea.Cmd {
 	return tea.Batch(batchCmds...)
 }
 
-func (p *ShortCutPanel) View() string {
+func (p *ShortCutPanel) borderView() string {
 	borderStyle := p.PanelStyle.UnfocusedBorder
 	if p.IsFocused() {
 		borderStyle = p.PanelStyle.FocusedBorder
 	}
 	return borderStyle.Render(
-		lipgloss.JoinVertical(lipgloss.Top, p.TitleStyle.Render(p.Title), p.Panel.View()),
+		lipgloss.JoinVertical(lipgloss.Top, p.TitleStyle.Render(p.Title)),
 	)
 }
 
-func (p *ShortCutPanel) HandleMessageFromChild(msg tea.Msg) tea.Cmd {
+func (p *ShortCutPanel) HandleMessageFromChild(msg tea.Msg) *UpdateResponse {
 	DebugPrintf("ShortCutPanel received message from child: %T %+v\n", msg, msg)
-	if msg, ok := msg.(tea.KeyMsg); ok {
+	if msg, ok := msg.(*tcell.EventKey); ok {
 		if p.EnableHorizontalMovement {
-			switch msg.String() {
-			case "left", "right":
+			switch msg.Key() {
+			case tcell.KeyLeft, tcell.KeyRight:
 				direction := Left
-				if msg.String() == "right" {
+				if msg.Key() == tcell.KeyRight {
 					direction = Right
 				}
 				p.Panel.SetMsgForParent(GeometricFocusRequestMsg{Direction: direction})
 				return nil
 			}
 		}
-		if p.Panel.Workflow != nil {
-			switch msg.String() {
-			case "enter", "down":
-				if !p.Workflow.IsLast() {
-					path := []int{p.Workflow.GetNumber()}
-					return func() tea.Msg {
-						return FocusRequestMsg{
-							RequestedPath: path,
-							Relation:      NextWorkflow,
-							WorkflowName:  p.Workflow.GetWorkflowName(),
-						}
-					}
-				}
-			case "backspace", "up":
-				if !p.Workflow.IsFirst() {
-					path := []int{p.Workflow.GetNumber()}
-					return func() tea.Msg {
-						return FocusRequestMsg{
-							RequestedPath: path,
-							Relation:      PrevWorkflow,
-							WorkflowName:  p.Workflow.GetWorkflowName(),
-						}
-					}
-				}
-			}
-		}
 		if p.EnableVerticalMovement {
-			switch msg.String() {
-			case "up", "down":
+			switch msg.Key() {
+			case tcell.KeyUp, tcell.KeyDown:
 				direction := Up
-				if msg.String() == "down" {
+				if msg.Key() == tcell.KeyDown {
 					direction = Down
 				}
 				p.Panel.SetMsgForParent(GeometricFocusRequestMsg{Direction: direction})
 				return nil
 			}
 		}
-		return func() tea.Msg {
-			return ConsiderForLocalShortcutMsg{Msg: msg}
+		return &UpdateResponse{
+			Cmd: func() tea.Msg {
+				return ConsiderForLocalShortcutMsg{EventKey: msg}
+			},
+			UpPropagateMsg: nil,
 		}
 	}
 	return nil
 }
 
-func (p *ShortCutPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (p *ShortCutPanel) Update(msg tea.Msg) *UpdateResponse {
 	DebugPrintf("ShortCutPanel.Update() called for %v\n", p.GetPath())
 	p.redraw = false
-	cmd := p.updateHelper(msg)
-	if cmd != nil {
-		p.redraw = true
-		return p, cmd
-	}
-	return p, nil
+	return p.updateHelper(msg)
 }
 
-func (p *ShortCutPanel) updateHelper(msg tea.Msg) tea.Cmd {
+func (p *ShortCutPanel) updateHelper(msg tea.Msg) *UpdateResponse {
 	switch msg := msg.(type) {
 	case ConsiderForGlobalShortcutMsg, ConsiderForLocalShortcutMsg:
 		return p.HandleShortcuts(msg)
 	case ResizeMsg:
 		return p.HandleSizeMsg(msg)
 	default:
-		cmds := []tea.Cmd{}
-		_, cmd := p.Panel.Update(msg)
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-		msg = p.Panel.GetMsgForParent()
-		if msg != nil {
-			cmd2 := p.HandleMessageFromChild(msg)
-			if cmd2 != nil {
-				cmds = append(cmds, cmd2)
-			}
-		}
-		if len(cmds) > 0 {
-			return tea.Batch(cmds...)
-		}
-		return nil
+		ur1 := p.Panel.Update(msg)
+		ur2 := ur1.HandleUpPropagate(p.HandleMessageFromChild)
+		return CombineUpdateResponses(ur1, ur2)
 	}
 }
 
-func (p *ShortCutPanel) HandleShortcuts(msg tea.Msg) tea.Cmd {
+func (p *ShortCutPanel) HandleShortcuts(msg tea.Msg) *UpdateResponse {
 	DebugPrintf("ShortCutPanel received shortcut message: %T %+v\n", msg, msg)
 	if msg, ok := msg.(ConsiderForGlobalShortcutMsg); ok {
-		if p.GlobalShortcut != "" {
-			if msg.Msg.String() == p.GlobalShortcut {
-				return func() tea.Msg {
+		if p.GlobalShortcut.IsMatch(msg.EventKey) {
+			return &UpdateResponse{
+				Cmd: func() tea.Msg {
 					return FocusRequestMsg{RequestedPath: p.GetPath(), Relation: Self}
-				}
+				},
+				UpPropagateMsg: nil,
 			}
 		}
 	}
 	if msg, ok := msg.(ConsiderForLocalShortcutMsg); ok {
-		if p.LocalShortcut != "" && msg.Msg.String() == p.LocalShortcut {
-			return func() tea.Msg {
-				return FocusRequestMsg{RequestedPath: p.GetPath(), Relation: Self}
+		if p.LocalShortcut.IsMatch(msg.EventKey) {
+			return &UpdateResponse{
+				Cmd: func() tea.Msg {
+					return FocusRequestMsg{RequestedPath: p.GetPath(), Relation: Self}
+				},
+				UpPropagateMsg: nil,
 			}
 		}
 	}
-
 	return nil
 }
 
@@ -278,31 +243,27 @@ func GetStylingSize(s lipgloss.Style) (int, int) {
 		s.GetVerticalMargins() + s.GetVerticalPadding() + s.GetVerticalBorderSize()
 }
 
-func (p *ShortCutPanel) HandleSizeMsg(msg ResizeMsg) tea.Cmd {
+func (p *ShortCutPanel) HandleSizeMsg(msg ResizeMsg) *UpdateResponse {
 	DebugPrintf("ShortCutPanel received size message: %+v\n", msg)
 	p.redraw = true
 	if p.view != nil {
 		p.view.Resize(msg.X, msg.Y, msg.Width, msg.Height)
 	}
-	if model, ok := p.Panel.Model.(HandlesSizeMsg); ok {
-		_, tvert := GetStylingSize(p.TitleStyle)
-		text_height := 1 + tvert
-		horz, vert := GetStylingSize(p.PanelStyle.UnfocusedBorder)
-		width := msg.Width - horz
-		height := msg.Height - vert - text_height
-		//p.TitleStyle = p.TitleStyle.Width(width)
-		updatedModel, cmd := model.HandleSizeMsg(ResizeMsg{Msg: msg, X: msg.X, Y: msg.Y, Width: width, Height: height})
-		p.Panel.Model = updatedModel
-		if cmd != nil {
-			return cmd
-		}
-	}
+
+	_, tvert := GetStylingSize(p.TitleStyle)
+	text_height := 1 + tvert
+	horz, vert := GetStylingSize(p.PanelStyle.UnfocusedBorder)
+	width := msg.Width - horz
+	height := msg.Height - vert - text_height
+	//p.TitleStyle = p.TitleStyle.Width(width)
+	ur := p.Panel.HandleSizeMsg(ResizeMsg{EventResize: msg.EventResize, X: msg.X, Y: msg.Y, Width: width, Height: height})
+
 	h, w := msg.Height-2, msg.Width-2
 	p.PanelStyle.UnfocusedBorder = p.PanelStyle.UnfocusedBorder.Width(w)
 	p.PanelStyle.FocusedBorder = p.PanelStyle.FocusedBorder.Width(w)
 	p.PanelStyle.UnfocusedBorder = p.PanelStyle.UnfocusedBorder.Height(h)
 	p.PanelStyle.FocusedBorder = p.PanelStyle.FocusedBorder.Height(h)
-	return nil
+	return ur
 }
 
 func (p *ShortCutPanel) SetPath(path []int) {
