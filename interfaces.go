@@ -39,6 +39,12 @@ type ILeafModelWithDraw interface {
 	Draw(force bool, view *tcellviews.ViewPort) bool
 }
 
+type PanelCenter struct {
+	X    int
+	Y    int
+	Path []int
+}
+
 // IPanel is an interface that allows a tea model to be focused.
 // It is used to handle focus passing in the UI.
 type IPanel interface {
@@ -49,6 +55,7 @@ type IPanel interface {
 	SetView(view *tcellviews.ViewPort)
 	Draw(force bool) bool
 	Init(cmds chan tea.Cmd, MarkMessageNotUsed func(msg *KeyMsg))
+	GetLeafPanelCenters() []PanelCenter
 }
 
 // WorkflowHandlerInterface is an interface that allows a tea model to be a workflow handler.

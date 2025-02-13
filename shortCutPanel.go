@@ -3,7 +3,6 @@ package panelbubble
 import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	tcell "github.com/gdamore/tcell/v2"
 	tcellviews "github.com/gdamore/tcell/v2/views"
 )
 
@@ -13,15 +12,11 @@ type PanelStyle struct {
 }
 
 type ShortCutPanelConfig struct {
-	GlobalShortcut              KeyBinding
-	LocalShortcut               KeyBinding
-	ContextualHelp              string
-	Title                       string
-	TitleStyle                  lipgloss.Style
-	PanelStyle                  PanelStyle
-	EnableWorkflowFocusMovement bool
-	EnableHorizontalMovement    bool
-	EnableVerticalMovement      bool
+	ContextualHelp string
+	Title          string
+	TitleStyle     lipgloss.Style
+	PanelStyle     PanelStyle
+	KeyBindings    []KeyBinding
 }
 
 // ShortCutPanel is an extension of Panel that can handle
@@ -49,18 +44,6 @@ type ShortCutPanel struct {
 
 type ShortCutPanelOption func(*ShortCutPanel)
 
-func WithGlobalShortcut(shortcut KeyBinding) ShortCutPanelOption {
-	return func(config *ShortCutPanel) {
-		config.GlobalShortcut = shortcut
-	}
-}
-
-func WithLocalShortcut(shortcut KeyBinding) ShortCutPanelOption {
-	return func(config *ShortCutPanel) {
-		config.LocalShortcut = shortcut
-	}
-}
-
 func WithContextualHelp(help string) ShortCutPanelOption {
 	return func(config *ShortCutPanel) {
 		config.ContextualHelp = help
@@ -85,13 +68,6 @@ func WithPanelStyle(style PanelStyle) ShortCutPanelOption {
 	}
 }
 
-func WithEnableMovement(horizontal, vertical bool) ShortCutPanelOption {
-	return func(config *ShortCutPanel) {
-		config.EnableHorizontalMovement = horizontal
-		config.EnableVerticalMovement = vertical
-	}
-}
-
 func WithConfig(config ShortCutPanelConfig) ShortCutPanelOption {
 	return func(panel *ShortCutPanel) {
 		panel.ShortCutPanelConfig = config
@@ -101,6 +77,12 @@ func WithConfig(config ShortCutPanelConfig) ShortCutPanelOption {
 func WithName(name string) ShortCutPanelOption {
 	return func(panel *ShortCutPanel) {
 		panel.Name = name
+	}
+}
+
+func WithKeyBindingMaker(keyBindingMaker func(*ShortCutPanel) KeyBinding) ShortCutPanelOption {
+	return func(panel *ShortCutPanel) {
+		panel.KeyBindings = append(panel.KeyBindings, keyBindingMaker(panel))
 	}
 }
 
@@ -213,35 +195,26 @@ func (p *ShortCutPanel) borderView() string {
 	)
 }
 
+func (p *ShortCutPanel) FocusRequestCmd(direction Relation) tea.Cmd {
+	return func() tea.Msg {
+		return FocusRequestMsg{
+			RequestedPath: p.GetPath(),
+			Relation:      direction,
+		}
+	}
+}
+
 func (p *ShortCutPanel) HandleMessageFromChild(msg Msg) tea.Cmd {
 	DebugPrintf("ShortCutPanel received message from child: %T %+v\n", msg, msg)
-	if msg, ok := msg.(*tcell.EventKey); ok {
-		if p.EnableHorizontalMovement {
-			switch msg.Key() {
-			case tcell.KeyLeft, tcell.KeyRight:
-				direction := Left
-				if msg.Key() == tcell.KeyRight {
-					direction = Right
-				}
-				return func() tea.Msg {
-					return FocusRequestMsg{RequestedPath: p.GetPath(), Relation: direction}
+	if msg, ok := msg.(KeyMsg); ok {
+		for _, keyBinding := range p.KeyBindings {
+			if keyBinding.IsMatch(msg.EventKey) {
+				if keyBinding.Enabled {
+					if keyBinding.Func != nil {
+						return keyBinding.Func()
+					}
 				}
 			}
-		}
-		if p.EnableVerticalMovement {
-			switch msg.Key() {
-			case tcell.KeyUp, tcell.KeyDown:
-				direction := Up
-				if msg.Key() == tcell.KeyDown {
-					direction = Down
-				}
-				return func() tea.Msg {
-					return FocusRequestMsg{RequestedPath: p.GetPath(), Relation: direction}
-				}
-			}
-		}
-		return func() tea.Msg {
-			return ConsiderForLocalShortcutMsg{KeyMsg: KeyMsg{EventKey: msg}}
 		}
 	}
 	return nil
@@ -251,13 +224,9 @@ func (p *ShortCutPanel) HandleMessage(msg Msg) {
 	DebugPrintf("ShortCutPanel %v received message: %T %+v\n", p.GetPath(), msg, msg)
 	var cmd tea.Cmd = nil
 	switch msg := msg.(type) {
-	case ConsiderForGlobalShortcutMsg, ConsiderForLocalShortcutMsg:
-		p.HandleShortcuts(msg)
 	case ResizeMsg:
 		p.HandleSizeMsg(msg)
 	case AutoRoutedMsg:
-		cmd = p.Model.Update(msg.Msg)
-	case BroadcastMsg:
 		cmd = p.Model.Update(msg.Msg)
 	case FocusGrantMsg:
 		p.focus = true
@@ -282,25 +251,6 @@ func (p *ShortCutPanel) MarkMessageNotUsedInternal(msg KeyMsg) {
 	} else {
 		p.MarkMessageNotUsed(&msg)
 	}
-}
-
-func (p *ShortCutPanel) HandleShortcuts(msg tea.Msg) tea.Cmd {
-	DebugPrintf("ShortCutPanel received shortcut message: %T %+v\n", msg, msg)
-	if msg, ok := msg.(ConsiderForGlobalShortcutMsg); ok {
-		if p.GlobalShortcut.IsMatch(msg.EventKey) {
-			return func() tea.Msg {
-				return FocusRequestMsg{RequestedPath: p.GetPath(), Relation: Self}
-			}
-		}
-	}
-	if msg, ok := msg.(ConsiderForLocalShortcutMsg); ok {
-		if p.LocalShortcut.IsMatch(msg.EventKey) {
-			return func() tea.Msg {
-				return FocusRequestMsg{RequestedPath: p.GetPath(), Relation: Self}
-			}
-		}
-	}
-	return nil
 }
 
 func GetStylingSize(s lipgloss.Style) (int, int, int, int) {
@@ -335,4 +285,11 @@ func (p *ShortCutPanel) HandleSizeMsg(msg ResizeMsg) tea.Cmd {
 	p.PanelStyle.UnfocusedBorder = p.PanelStyle.UnfocusedBorder.Height(h)
 	p.PanelStyle.FocusedBorder = p.PanelStyle.FocusedBorder.Height(h)
 	return cmd
+}
+
+func (p *ShortCutPanel) GetLeafPanelCenters() []PanelCenter {
+	x, y, X, Y := p.view.GetPhysical()
+	return []PanelCenter{
+		{X: x + (X / 2), Y: y + (Y / 2), Path: p.GetPath()},
+	}
 }

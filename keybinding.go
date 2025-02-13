@@ -1,6 +1,7 @@
 package panelbubble
 
 import (
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/gdamore/tcell/v2"
 )
 
@@ -15,10 +16,53 @@ type KeyBinding struct {
 	ShortHelp string
 	LongHelp  string
 	Enabled   bool
+	Func      func() tea.Cmd
 }
 
-func NewKeyBinding(keyDefs []KeyDef, enabled bool, shortHelp string, longHelp string) *KeyBinding {
-	return &KeyBinding{KeyDefs: keyDefs, ShortHelp: shortHelp, LongHelp: longHelp, Enabled: enabled}
+func NewKeyBinding(opts ...KeyBindingOption) *KeyBinding {
+	keybinding := &KeyBinding{}
+	for _, opt := range opts {
+		opt(keybinding)
+	}
+	return keybinding
+}
+
+type KeyBindingOption func(*KeyBinding)
+
+func WithFunc(fn func() tea.Cmd) KeyBindingOption {
+	return func(keybinding *KeyBinding) {
+		keybinding.Func = fn
+	}
+}
+
+func WithEnabled(enabled bool) KeyBindingOption {
+	return func(keybinding *KeyBinding) {
+		keybinding.Enabled = enabled
+	}
+}
+
+func WithKeyDefs(keyDefs []KeyDef) KeyBindingOption {
+	return func(keybinding *KeyBinding) {
+		keybinding.KeyDefs = keyDefs
+	}
+}
+
+func WithShortHelp(shortHelp string) KeyBindingOption {
+	return func(keybinding *KeyBinding) {
+		keybinding.ShortHelp = shortHelp
+	}
+}
+
+func WithLongHelp(longHelp string) KeyBindingOption {
+	return func(keybinding *KeyBinding) {
+		keybinding.LongHelp = longHelp
+	}
+}
+
+func WithKeyDef(keyDef KeyDef) KeyBindingOption {
+	return func(keybinding *KeyBinding) {
+		keybinding.KeyDefs = append(keybinding.KeyDefs, keyDef)
+	}
 }
 
 func (keybinding *KeyBinding) IsEnabled() bool {

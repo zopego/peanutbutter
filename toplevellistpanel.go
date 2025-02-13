@@ -34,16 +34,29 @@ func (m *TopLevelListPanel) MessageNotUsedInternal(msg *KeyMsg) {
 	m.MarkMessageNotUsed(msg)
 }
 
+func (m *TopLevelListPanel) FigureOutFocusGrant(msg FocusRequestMsg) *FocusGrantMsg {
+	switch msg.Relation {
+	case Self:
+		return &FocusGrantMsg{RoutePath: &RoutePath{Path: msg.RequestedPath}, Relation: msg.Relation}
+	case Left, Right, Up, Down:
+		return nil
+	default:
+		return nil
+	}
+}
+
 func (m *TopLevelListPanel) HandleMessage(msg Msg) {
 	DebugPrintf("TopLevelListPanel received message: %T %+v\n", msg, msg)
 	switch msg := msg.(type) {
 	case FocusRequestMsg:
 		m.ListPanel.HandleMessage(FocusRevokeMsg{})
-		newCmd := func() tea.Msg {
-			return FocusGrantMsg{RoutePath: &RoutePath{Path: msg.RequestedPath}, Relation: msg.Relation}
+		focusGrantMsg := m.FigureOutFocusGrant(msg)
+		if focusGrantMsg != nil {
+			newCmd := func() tea.Msg {
+				return *focusGrantMsg
+			}
+			m.cmds <- newCmd
 		}
-
-		m.cmds <- newCmd
 
 	case *tcell.EventKey:
 		k := KeyMsg{EventKey: msg, Id: time.Now().UnixNano()}

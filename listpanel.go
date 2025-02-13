@@ -174,8 +174,7 @@ func (m *ListPanel) HandleMessage(msg Msg) {
 		l_msgpath := len(r_path)
 		if l_mypath == l_msgpath {
 			// This message is destined for this listpanel
-			panic("ListPanel.HandleMessage() received a RoutedMsgType for this ListPanel")
-			//return m.HandleRoutedMessage(msg.Msg)
+			// return m.HandleRoutedMessage(msg.Msg)
 		} else {
 			nextIdx := r_path[l_mypath]
 			if nextIdx < 0 || nextIdx > len(m.Panels) {
@@ -202,7 +201,9 @@ func (m *ListPanel) GetFocusIndex() int {
 	return -1
 }
 
-func handleFocusIndex(focusIndex int, direction Relation, len int) int {
+func (m *ListPanel) handleFocusIndex(direction Relation) int {
+	focusIndex := m.GetFocusIndex()
+	len := len(m.Panels)
 	if direction == Up {
 		focusIndex--
 	}
@@ -219,14 +220,18 @@ func handleFocusIndex(focusIndex int, direction Relation, len int) int {
 	return ((focusIndex % len) + len) % len
 }
 
-/* This is deprecated because we will not be receiving messages from children
-func (m *ListPanel) HandleMessageFromChild(msg tea.Msg) *UpdateResponse {
+func (m *ListPanel) HandleFocusRequestMsg(msg FocusRequestMsg) *FocusGrantMsg {
+	newFocusIndex := m.handleFocusIndex(msg.Relation)
+	m.SetSelected(newFocusIndex)
+	return &FocusGrantMsg{RoutePath: &RoutePath{Path: m.GetPath()}, Relation: msg.Relation}
+}
+
+/*
+func (m *ListPanel) HandleRoutedMessage(msg tea.Msg) {
 	DebugPrintf("ListPanel %v received message from child: %T %+v\n", m.path, msg, msg)
-	if msg, ok := msg.(GeometricFocusRequestMsg); ok {
-		focusIndex := m.GetFocusIndex()
-		if focusIndex == -1 {
-			return nil
-		}
+	if msg, ok := msg.(FocusGrantMsg); ok {
+		focusIndex := msg.RequesterPath
+		direction := msg.Relation
 		var path *[]int = nil
 		if m.Layout.Orientation == Horizontal && (msg.Direction == Left || msg.Direction == Right) {
 			// first, lets find the currently focused panel
@@ -248,7 +253,8 @@ func (m *ListPanel) HandleMessageFromChild(msg tea.Msg) *UpdateResponse {
 	}
 	m.SetMsgForParent(msg)
 	return nil
-}*/
+}
+*/
 
 /* func (m *ListPanel) HandleRoutedMessage(msg tea.Msg) *UpdateResponse {
 	DebugPrintf("ListPanel %v received routed message: %T %+v\n", m.path, msg, msg)
@@ -265,6 +271,14 @@ func (m *ListPanel) HandleMessageFromChild(msg tea.Msg) *UpdateResponse {
 
 func (m ListPanel) GetLayout() Layout {
 	return m.Layout
+}
+
+func (m *ListPanel) GetLeafPanelCenters() []PanelCenter {
+	centers := []PanelCenter{}
+	for _, panel := range m.Panels {
+		centers = append(centers, panel.GetLeafPanelCenters()...)
+	}
+	return centers
 }
 
 func (m *ListPanel) HandleZStackedSizeMsg(msg ResizeMsg) {
