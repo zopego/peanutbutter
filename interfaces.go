@@ -5,6 +5,68 @@ import (
 	tcellviews "github.com/gdamore/tcell/v2/views"
 )
 
+func IsSamePath(path1, path2 []int) bool {
+	if len(path1) != len(path2) {
+		return false
+	}
+	for i, v := range path1 {
+		if v != path2[i] {
+			return false
+		}
+	}
+	return true
+}
+
+type IRootModel interface {
+	Update(msg Msg)
+	Init(cmds chan tea.Cmd, view *tcellviews.ViewPort) tea.Cmd
+	Draw() bool
+}
+
+type ILeafModel interface {
+	Update(msg Msg) tea.Cmd
+	Init(MarkMessageNotUsed func(msg *KeyMsg)) tea.Cmd
+	//SetView(view *tcellviews.ViewPort)
+	//Draw(force bool) bool
+}
+
+type ILeafModelWithView interface {
+	NeedsRedraw() bool
+	View() string
+}
+
+type ILeafModelWithDraw interface {
+	Draw(force bool, view *tcellviews.ViewPort) bool
+}
+
+// IPanel is an interface that allows a tea model to be focused.
+// It is used to handle focus passing in the UI.
+type IPanel interface {
+	IsFocused() bool
+	GetPath() []int
+	SetPath(path []int)
+	HandleMessage(msg Msg)
+	SetView(view *tcellviews.ViewPort)
+	Draw(force bool) bool
+	Init(cmds chan tea.Cmd, MarkMessageNotUsed func(msg *KeyMsg))
+}
+
+// WorkflowHandlerInterface is an interface that allows a tea model to be a workflow handler.
+// A workflow handler is a panel that is part of a workflow.
+/* type WorkflowHandlerInterface interface {
+	HandleFocusGrant(model tea.Model, msg FocusGrantMsg) (tea.Model, tea.Cmd)
+	GetNumber() int
+	GetWorkflowName() string
+	IsFirst() bool
+	IsLast() bool
+} */
+
+/*
+type HandlesSizeMsg interface {
+	HandleSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd)
+}
+*/
+
 // Initiable is an interface that allows calling Init() on
 // things that implement the Init() method but might not be a tea.Model
 /* type DoesInit interface {
@@ -30,59 +92,3 @@ import (
 /* type CanSendMsgToParent interface {
 	GetMsgForParent() tea.Msg
 } */ // => this is not needed anymore, we can just use HandlesUpdates
-
-func IsSamePath(path1, path2 []int) bool {
-	if len(path1) != len(path2) {
-		return false
-	}
-	for i, v := range path1 {
-		if v != path2[i] {
-			return false
-		}
-	}
-	return true
-}
-
-type IModel interface {
-	Update(msg Msg) tea.Cmd
-	Init(MarkMessageNotUsed func(msg *KeyMsg)) tea.Cmd
-	//SetView(view *tcellviews.ViewPort)
-	//Draw(force bool) bool
-}
-
-type IModelWithView interface {
-	NeedsRedraw() bool
-	View() string
-}
-
-type IModelWithDraw interface {
-	Draw(force bool, view *tcellviews.ViewPort) bool
-}
-
-// IPanel is an interface that allows a tea model to be focused.
-// It is used to handle focus passing in the UI.
-type IPanel interface {
-	IsFocused() bool
-	GetPath() []int
-	SetPath(path []int)
-	HandleMessage(msg Msg)
-	SetView(view *tcellviews.ViewPort)
-	Draw(force bool) bool
-	Init(cmds chan tea.Cmd, MarkMessageNotUsed func(msg *KeyMsg))
-}
-
-// WorkflowHandlerInterface is an interface that allows a tea model to be a workflow handler.
-// A workflow handler is a panel that is part of a workflow.
-type WorkflowHandlerInterface interface {
-	HandleFocusGrant(model tea.Model, msg FocusGrantMsg) (tea.Model, tea.Cmd)
-	GetNumber() int
-	GetWorkflowName() string
-	IsFirst() bool
-	IsLast() bool
-}
-
-/*
-type HandlesSizeMsg interface {
-	HandleSizeMsg(msg ResizeMsg) (tea.Model, tea.Cmd)
-}
-*/

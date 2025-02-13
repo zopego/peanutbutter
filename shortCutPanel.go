@@ -38,7 +38,7 @@ type ShortCutPanel struct {
 	ShortCutPanelConfig
 	redraw             bool
 	cmds               chan tea.Cmd
-	Model              IModel
+	Model              ILeafModel
 	focus              bool
 	path               []int
 	Name               string
@@ -104,7 +104,7 @@ func WithName(name string) ShortCutPanelOption {
 	}
 }
 
-func NewShortCutPanel(model IModel, opts ...ShortCutPanelOption) *ShortCutPanel {
+func NewShortCutPanel(model ILeafModel, opts ...ShortCutPanelOption) *ShortCutPanel {
 	spanel := &ShortCutPanel{}
 	for _, opt := range opts {
 		opt(spanel)
@@ -140,7 +140,7 @@ func (p *ShortCutPanel) SetView(view *tcellviews.ViewPort) {
 	p.modelView = tcellviews.NewViewPort(p.view, 0, 0, -1, -1)
 }
 
-func (p *ShortCutPanel) DrawModelWithDraw(m IModelWithDraw, force bool) bool {
+func (p *ShortCutPanel) DrawModelWithDraw(m ILeafModelWithDraw, force bool) bool {
 	childRedraw := m.Draw(force, p.modelView)
 	if p.redraw || force || childRedraw {
 		DebugPrintf("ShortCutPanel.Draw() called for %v. Redraw: %v, force: %v\n", p.GetPath(), p.redraw, force)
@@ -150,7 +150,7 @@ func (p *ShortCutPanel) DrawModelWithDraw(m IModelWithDraw, force bool) bool {
 	return false
 }
 
-func (p *ShortCutPanel) DrawModelWithView(m IModelWithView, force bool) bool {
+func (p *ShortCutPanel) DrawModelWithView(m ILeafModelWithView, force bool) bool {
 	if !m.NeedsRedraw() && !force {
 		return false
 	}
@@ -163,11 +163,11 @@ func (p *ShortCutPanel) DrawModelWithView(m IModelWithView, force bool) bool {
 func (p *ShortCutPanel) Draw(force bool) bool {
 	childRedraw := false
 	modelOk := false
-	if m, ok := p.Model.(IModelWithDraw); ok {
+	if m, ok := p.Model.(ILeafModelWithDraw); ok {
 		childRedraw = p.DrawModelWithDraw(m, force)
 		modelOk = true
 	}
-	if m, ok := p.Model.(IModelWithView); ok {
+	if m, ok := p.Model.(ILeafModelWithView); ok {
 		childRedraw = p.DrawModelWithView(m, force)
 		modelOk = true
 	}
