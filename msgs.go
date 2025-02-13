@@ -12,6 +12,7 @@ import (
 // 3. Routed messages: messages that are sent to a specific panel identified by path
 // 4. Broadcast messages: messages that are sent to all panels
 // Relation is an enum that describes the relation of a panel to its requested focus panel
+
 type Relation int
 
 const (
@@ -56,7 +57,6 @@ type UntypedMsgType struct {
 type FocusRequestMsg struct {
 	RequestedPath []int // Path to identify the focus request, e.g., [0, 2] means first panel's second child
 	Relation      Relation
-	WorkflowName  string
 }
 
 type ContextualHelpTextMsg struct {
