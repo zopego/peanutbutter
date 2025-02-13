@@ -1,6 +1,8 @@
 package panelbubble
 
 import (
+	"time"
+
 	tea "github.com/charmbracelet/bubbletea"
 	tcell "github.com/gdamore/tcell/v2"
 )
@@ -15,55 +17,39 @@ import (
 // before passing a key-stroke as a regular key-stroke message
 type TopLevelListPanel struct {
 	*ListPanel
+	cmds               chan tea.Cmd
+	MarkMessageNotUsed func(msg *KeyMsg)
 }
 
-var _ tea.Model = &TopLevelListPanel{}
-var _ Focusable = &TopLevelListPanel{}
+var _ IPanel = &TopLevelListPanel{}
 
-func (m *TopLevelListPanel) Init() tea.Cmd {
+func (m *TopLevelListPanel) Init(cmds chan tea.Cmd, MarkMessageNotUsed func(msg *KeyMsg)) {
 	m.ListPanel.SetPath([]int{})
-	return m.ListPanel.Init()
+	m.MarkMessageNotUsed = MarkMessageNotUsed
+	m.cmds = cmds
+	m.ListPanel.Init(cmds, m.MessageNotUsedInternal)
 }
 
-func (m *TopLevelListPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *TopLevelListPanel) MessageNotUsedInternal(msg *KeyMsg) {
+	m.MarkMessageNotUsed(msg)
+}
+
+func (m *TopLevelListPanel) HandleMessage(msg Msg) {
 	DebugPrintf("TopLevelListPanel received message: %T %+v\n", msg, msg)
 	switch msg := msg.(type) {
 	case FocusRequestMsg:
-		cmds := []tea.Cmd{}
-		_, cmd := m.ListPanel.Update(FocusRevokeMsg{})
-
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-
-		// This ensures that a complete update is done before we send a focus grant message
+		m.ListPanel.HandleMessage(FocusRevokeMsg{})
 		newCmd := func() tea.Msg {
-			return FocusGrantMsg{RoutePath: RoutePath{Path: msg.RequestedPath}, Relation: msg.Relation, WorkflowName: msg.WorkflowName}
+			return FocusGrantMsg{RoutePath: &RoutePath{Path: msg.RequestedPath}, Relation: msg.Relation}
 		}
-		cmds = append(cmds, newCmd)
-		return m, tea.Batch(cmds...)
+
+		m.cmds <- newCmd
 
 	case *tcell.EventKey:
-		// We propagate key messages as global shortcuts initially
-		// if no panel consumes it, we will send it out as a propagate key message
-		globalShortcutMsg := ConsiderForGlobalShortcutMsg{EventKey: msg}
-		_, cmd := m.ListPanel.Update(globalShortcutMsg)
-		if cmd != nil {
-			return m, cmd
-		} else {
-			return m, func() tea.Msg {
-				return PropagateKeyMsg{EventKey: msg}
-			}
-		}
-
-	case PropagateKeyMsg:
-		_, cmd := m.ListPanel.Update(msg.EventKey)
-		return m, cmd
+		k := KeyMsg{EventKey: msg, Id: time.Now().UnixNano()}
+		m.ListPanel.HandleMessage(k)
 
 	default:
-		_, cmd := m.ListPanel.Update(msg)
-		return m, cmd
+		m.ListPanel.HandleMessage(msg)
 	}
-
-	return m, nil
 }

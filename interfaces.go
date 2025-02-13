@@ -43,50 +43,20 @@ func IsSamePath(path1, path2 []int) bool {
 	return true
 }
 
-type UpdateResponse struct {
-	//NeedToRedraw   bool
-	UpPropagateMsg tea.Msg
-	Cmd            tea.Cmd
-}
-
-// CombineUpdateResponses combines a list of UpdateResponse objects into a single UpdateResponse object.
-// It returns nil if all the UpdateResponse objects are nil.
-// It returns the last UpPropagateMsg if present.
-func CombineUpdateResponses(urs ...*UpdateResponse) *UpdateResponse {
-	cmds := []tea.Cmd{}
-	for _, ur := range urs {
-		if ur.Cmd != nil {
-			cmds = append(cmds, ur.Cmd)
-		}
-	}
-	batchCmd := tea.Batch(cmds...)
-	lastPropagateMsg := urs[len(urs)-1].UpPropagateMsg
-
-	if batchCmd != nil || lastPropagateMsg != nil {
-		return &UpdateResponse{
-			Cmd:            batchCmd,
-			UpPropagateMsg: lastPropagateMsg,
-		}
-	}
-	return nil
-}
-
-func (ur *UpdateResponse) CombineHandleUpPropagate(handler func(msg tea.Msg) *UpdateResponse) *UpdateResponse {
-	urs := []*UpdateResponse{ur}
-	if ur != nil && ur.UpPropagateMsg != nil {
-		urs = append(urs, handler(ur.UpPropagateMsg))
-	}
-	return CombineUpdateResponses(urs...)
-}
-
 type IModel interface {
-	HandleFocusGranted() *UpdateResponse
-	HandleFocusRevoked() *UpdateResponse
-	HandleSizeMsg(msg ResizeMsg) *UpdateResponse
-	Update(msg tea.Msg) *UpdateResponse
-	Init() tea.Cmd
-	SetView(view *tcellviews.ViewPort)
-	Draw(force bool) bool
+	Update(msg Msg) tea.Cmd
+	Init(MarkMessageNotUsed func(msg *KeyMsg)) tea.Cmd
+	//SetView(view *tcellviews.ViewPort)
+	//Draw(force bool) bool
+}
+
+type IModelWithView interface {
+	NeedsRedraw() bool
+	View() string
+}
+
+type IModelWithDraw interface {
+	Draw(force bool, view *tcellviews.ViewPort) bool
 }
 
 // IPanel is an interface that allows a tea model to be focused.
@@ -95,7 +65,10 @@ type IPanel interface {
 	IsFocused() bool
 	GetPath() []int
 	SetPath(path []int)
-	IModel
+	HandleMessage(msg Msg)
+	SetView(view *tcellviews.ViewPort)
+	Draw(force bool) bool
+	Init(cmds chan tea.Cmd, MarkMessageNotUsed func(msg *KeyMsg))
 }
 
 // WorkflowHandlerInterface is an interface that allows a tea model to be a workflow handler.

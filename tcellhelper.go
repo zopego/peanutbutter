@@ -38,7 +38,7 @@ func translateAnsiStyleToTcellStyle(s ansi.TextStyle) tcell.AttrMask {
 	return attrs
 }
 
-func tcellDrawHelper(j string, s tcellviews.View) {
+func TcellDrawHelper(j string, s tcellviews.View, preserveViews []*tcellviews.ViewPort) {
 	view, err := ansi.Parse(j)
 	if err != nil {
 		fmt.Printf("Error parsing view: %v\n", err)
@@ -65,7 +65,18 @@ func tcellDrawHelper(j string, s tcellviews.View) {
 			} else {
 				// if width of rune is more than 1, then we need to split it
 				rw := runewidth.RuneWidth(r)
-				s.SetContent(x, y, r, nil, style)
+				// check if x, y happen to be in the preserveViews list
+				skipRune := false
+				for _, v := range preserveViews {
+					px, py, pX, pY := v.GetPhysical()
+					if x >= px && x <= pX && y >= py && y <= pY {
+						skipRune = true
+						break
+					}
+				}
+				if !skipRune {
+					s.SetContent(x, y, r, nil, style)
+				}
 				x += rw
 			}
 		}

@@ -6,14 +6,11 @@ import (
 )
 
 type Panel struct {
-	Model        IModel
-	focus        bool
-	path         []int // Path to uniquely identify this node in the hierarchy
-	Name         string
-	Workflow     WorkflowHandlerInterface
-	MsgForParent tea.Msg
-	view         tcellviews.View
-	//redraw       bool
+	Model IModel
+	focus bool
+	path  []int // Path to uniquely identify this node in the hierarchy
+	Name  string
+	view  tcellviews.View
 }
 
 type PanelOption func(*Panel)
@@ -48,18 +45,6 @@ func (p *Panel) Draw(force bool) bool {
 	return redraw
 }
 
-func (p *Panel) SetMsgForParent(msg tea.Msg) {
-	p.MsgForParent = msg
-}
-
-func (p *Panel) GetMsgForParent() tea.Msg {
-	msg := p.MsgForParent
-	p.MsgForParent = nil
-	return msg
-}
-
-var _ IPanel = &Panel{}
-
 func (p *Panel) IsFocused() bool {
 	return p.focus
 }
@@ -89,18 +74,19 @@ func (p *Panel) GetPath() []int {
 	return p.path
 }
 
-func (p *Panel) HandleMessage(msg tea.Msg) *UpdateResponse {
+/*
+func (p *Panel) HandleMessage(msg tea.Msg) *Response {
 	DebugPrintf("Panel %v received message: %T %+v\n", p.path, msg, msg)
 	ur := p.Model.Update(msg)
 	//p.redraw = ur.NeedToRedraw
-	return &UpdateResponse{
+	return &Response{
 		//NeedToRedraw:   ur.NeedToRedraw,
 		UpPropagateMsg: ur.UpPropagateMsg,
 		Cmd:            p.RoutedCmd(ur.Cmd),
 	}
-}
+}*/
 
-func (p *Panel) HandleFocusGranted() *UpdateResponse {
+/* func (p *Panel) HandleFocusGranted() *UpdateResponse {
 	DebugPrintf("Panel %v received focus grant message\n", p.path)
 	p.focus = true
 	//p.redraw = true
@@ -108,8 +94,9 @@ func (p *Panel) HandleFocusGranted() *UpdateResponse {
 		return p.Model.HandleFocusGranted()
 	}
 	return nil
-}
+}*/
 
+/*
 func (p *Panel) HandleFocusRevoked() *UpdateResponse {
 	DebugPrintf("Panel %v received focus revoke message\n", p.path)
 	//if p.focus {
@@ -143,24 +130,21 @@ func (p *Panel) HandleFocus(msg tea.Msg) *UpdateResponse {
 }
 
 func (p *Panel) HandleSizeMsg(msg ResizeMsg) *UpdateResponse {
-	/*if p.view != nil {
-		p.view.Resize(msg.X, msg.Y, msg.Width, msg.Height)
-	}*/
+	//if p.view != nil {
+	//	p.view.Resize(msg.X, msg.Y, msg.Width, msg.Height)
+	//}
 	return p.Model.HandleSizeMsg(msg)
 }
+*/
 
-func (p *Panel) Update(msg tea.Msg) *UpdateResponse {
+func (p *Panel) Update(msg IMsg) (tea.Cmd, bool) {
 	DebugPrintf("Panel %v received message: %T %+v\n", p.path, msg, msg)
 	switch msg := msg.(type) {
-	case FocusGrantMsg, FocusRevokeMsg:
-		return p.HandleFocus(msg)
-	case AutoRoutedMsg:
-		return p.HandleMessage(msg.Msg)
-	case ResizeMsg:
-		return p.HandleSizeMsg(msg)
+	case AutoRouteMsg:
+		return p.Model.Update(msg)
 	case BroadcastMsg:
-		return p.HandleMessage(msg.Msg)
+		return p.Model.Update(msg)
 	default:
-		return p.HandleMessage(msg)
+		return p.Model.Update(msg)
 	}
 }
