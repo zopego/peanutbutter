@@ -36,8 +36,15 @@ type ShortCutPanelConfig struct {
 // or not
 type ShortCutPanel struct {
 	ShortCutPanelConfig
-	*Panel
-	redraw bool
+	redraw             bool
+	cmds               chan tea.Cmd
+	Model              IModel
+	focus              bool
+	path               []int
+	Name               string
+	view               *tcellviews.ViewPort
+	MarkMessageNotUsed func(msg *KeyMsg)
+	modelView          *tcellviews.ViewPort
 }
 
 type ShortCutPanelOption func(*ShortCutPanel)
@@ -91,53 +98,100 @@ func WithConfig(config ShortCutPanelConfig) ShortCutPanelOption {
 	}
 }
 
-func NewShortCutPanel(panel *Panel, opts ...ShortCutPanelOption) *ShortCutPanel {
+func WithName(name string) ShortCutPanelOption {
+	return func(panel *ShortCutPanel) {
+		panel.Name = name
+	}
+}
+
+func NewShortCutPanel(model IModel, opts ...ShortCutPanelOption) *ShortCutPanel {
 	spanel := &ShortCutPanel{}
 	for _, opt := range opts {
 		opt(spanel)
 	}
-	if panel != nil {
-		spanel.Panel = panel
-	} else {
-		spanel.Panel = NewPanel()
+	if model != nil {
+		spanel.Model = model
 	}
 	return spanel
 }
 
-// var _ tea.Model = &ShortCutPanel{}
 var _ IPanel = &ShortCutPanel{}
 
 //var _ CanSendMsgToParent = &ShortCutPanel{}
 
-func (p *ShortCutPanel) SetView(view *tcellviews.ViewPort) {
-	p.view = view
+func (p *ShortCutPanel) IsFocused() bool {
+	return p.focus
 }
 
-func (p *ShortCutPanel) Draw(force bool) bool {
-	childRedraw := p.Panel.Draw(force)
+func (p *ShortCutPanel) SetPath(path []int) {
+	p.path = path
+}
+
+func (p *ShortCutPanel) RoutedCmd(cmd tea.Cmd) tea.Cmd {
+	return MakeAutoRoutedCmd(cmd, p.path)
+}
+
+func (p *ShortCutPanel) GetPath() []int {
+	return p.path
+}
+
+func (p *ShortCutPanel) SetView(view *tcellviews.ViewPort) {
+	p.view = view
+	p.modelView = tcellviews.NewViewPort(p.view, 0, 0, -1, -1)
+}
+
+func (p *ShortCutPanel) DrawModelWithDraw(m IModelWithDraw, force bool) bool {
+	childRedraw := m.Draw(force, p.modelView)
 	if p.redraw || force || childRedraw {
 		DebugPrintf("ShortCutPanel.Draw() called for %v. Redraw: %v, force: %v\n", p.GetPath(), p.redraw, force)
-		str := p.borderView()
-		tcellDrawHelper(str, p.view)
 		p.redraw = false
 		return true
 	}
 	return false
 }
 
-/* func (p *ShortCutPanel) GetMsgForParent() tea.Msg {
-	msg := p.Panel.GetMsgForParent()
-	return msg
-} */
+func (p *ShortCutPanel) DrawModelWithView(m IModelWithView, force bool) bool {
+	if !m.NeedsRedraw() && !force {
+		return false
+	}
+	DebugPrintf("ShortCutPanel.DrawModelWithView() called for %v. force: %v\n", p.GetPath(), force)
+	str := m.View()
+	TcellDrawHelper(str, p.modelView, []*tcellviews.ViewPort{})
+	return true
+}
 
-/* func (p *ShortCutPanel) SetMsgForParent(msg tea.Msg) {
-	p.Panel.SetMsgForParent(msg)
-} */
+func (p *ShortCutPanel) Draw(force bool) bool {
+	childRedraw := false
+	modelOk := false
+	if m, ok := p.Model.(IModelWithDraw); ok {
+		childRedraw = p.DrawModelWithDraw(m, force)
+		modelOk = true
+	}
+	if m, ok := p.Model.(IModelWithView); ok {
+		childRedraw = p.DrawModelWithView(m, force)
+		modelOk = true
+	}
+	if childRedraw || p.redraw || force {
+		str := p.borderView()
+		TcellDrawHelper(str, p.view, []*tcellviews.ViewPort{p.modelView})
+		p.redraw = false
+		return true
+	}
 
-func (p ShortCutPanel) Init() tea.Cmd {
+	if !modelOk {
+		DebugPrintf("ShortCutPanel.Draw() called for %v. Model is neither IModelWithDraw nor IModelWithView", p.GetPath())
+	}
+	return false
+}
+
+func (p *ShortCutPanel) Init(cmds chan tea.Cmd, MarkMessageNotUsed func(msg *KeyMsg)) {
 	DebugPrintf("ShortCutPanel.Init() called for %v\n", p.GetPath())
+	p.cmds = cmds
+	p.MarkMessageNotUsed = MarkMessageNotUsed
 	var batchCmds []tea.Cmd
-	cmd := p.Panel.Init()
+	cmd := p.Model.Init(func(msg *KeyMsg) {
+		p.MarkMessageNotUsedInternal(*msg)
+	})
 	if cmd != nil {
 		batchCmds = append(batchCmds, cmd)
 	}
@@ -146,7 +200,7 @@ func (p ShortCutPanel) Init() tea.Cmd {
 			return ContextualHelpTextMsg{Text: p.ContextualHelp}
 		})
 	}
-	return tea.Batch(batchCmds...)
+	cmds <- tea.Batch(batchCmds...)
 }
 
 func (p *ShortCutPanel) borderView() string {
@@ -159,7 +213,7 @@ func (p *ShortCutPanel) borderView() string {
 	)
 }
 
-func (p *ShortCutPanel) HandleMessageFromChild(msg tea.Msg) *UpdateResponse {
+func (p *ShortCutPanel) HandleMessageFromChild(msg Msg) tea.Cmd {
 	DebugPrintf("ShortCutPanel received message from child: %T %+v\n", msg, msg)
 	if msg, ok := msg.(*tcell.EventKey); ok {
 		if p.EnableHorizontalMovement {
@@ -169,8 +223,9 @@ func (p *ShortCutPanel) HandleMessageFromChild(msg tea.Msg) *UpdateResponse {
 				if msg.Key() == tcell.KeyRight {
 					direction = Right
 				}
-				p.Panel.SetMsgForParent(GeometricFocusRequestMsg{Direction: direction})
-				return nil
+				return func() tea.Msg {
+					return FocusRequestMsg{RequestedPath: p.GetPath(), Relation: direction}
+				}
 			}
 		}
 		if p.EnableVerticalMovement {
@@ -180,93 +235,104 @@ func (p *ShortCutPanel) HandleMessageFromChild(msg tea.Msg) *UpdateResponse {
 				if msg.Key() == tcell.KeyDown {
 					direction = Down
 				}
-				p.Panel.SetMsgForParent(GeometricFocusRequestMsg{Direction: direction})
-				return nil
+				return func() tea.Msg {
+					return FocusRequestMsg{RequestedPath: p.GetPath(), Relation: direction}
+				}
 			}
 		}
-		return &UpdateResponse{
-			Cmd: func() tea.Msg {
-				return ConsiderForLocalShortcutMsg{EventKey: msg}
-			},
-			UpPropagateMsg: nil,
+		return func() tea.Msg {
+			return ConsiderForLocalShortcutMsg{KeyMsg: KeyMsg{EventKey: msg}}
 		}
 	}
 	return nil
 }
 
-func (p *ShortCutPanel) Update(msg tea.Msg) *UpdateResponse {
-	DebugPrintf("ShortCutPanel.Update() called for %v\n", p.GetPath())
-	p.redraw = false
-	return p.updateHelper(msg)
-}
-
-func (p *ShortCutPanel) updateHelper(msg tea.Msg) *UpdateResponse {
+func (p *ShortCutPanel) HandleMessage(msg Msg) {
+	DebugPrintf("ShortCutPanel %v received message: %T %+v\n", p.GetPath(), msg, msg)
+	var cmd tea.Cmd = nil
 	switch msg := msg.(type) {
 	case ConsiderForGlobalShortcutMsg, ConsiderForLocalShortcutMsg:
-		return p.HandleShortcuts(msg)
+		p.HandleShortcuts(msg)
 	case ResizeMsg:
-		return p.HandleSizeMsg(msg)
+		p.HandleSizeMsg(msg)
+	case AutoRoutedMsg:
+		cmd = p.Model.Update(msg.Msg)
+	case BroadcastMsg:
+		cmd = p.Model.Update(msg.Msg)
+	case FocusGrantMsg:
+		p.focus = true
+		p.redraw = true
+		cmd = p.Model.Update(msg)
+	case FocusRevokeMsg:
+		p.focus = false
+		p.redraw = true
+		cmd = p.Model.Update(msg)
 	default:
-		ur1 := p.Panel.Update(msg)
-		ur2 := ur1.HandleUpPropagate(p.HandleMessageFromChild)
-		return CombineUpdateResponses(ur1, ur2)
+		cmd = p.Model.Update(msg)
+	}
+	if cmd != nil {
+		p.cmds <- p.RoutedCmd(cmd)
 	}
 }
 
-func (p *ShortCutPanel) HandleShortcuts(msg tea.Msg) *UpdateResponse {
+func (p *ShortCutPanel) MarkMessageNotUsedInternal(msg KeyMsg) {
+	cmd := p.HandleMessageFromChild(msg)
+	if cmd != nil {
+		p.cmds <- cmd
+	} else {
+		p.MarkMessageNotUsed(&msg)
+	}
+}
+
+func (p *ShortCutPanel) HandleShortcuts(msg tea.Msg) tea.Cmd {
 	DebugPrintf("ShortCutPanel received shortcut message: %T %+v\n", msg, msg)
 	if msg, ok := msg.(ConsiderForGlobalShortcutMsg); ok {
 		if p.GlobalShortcut.IsMatch(msg.EventKey) {
-			return &UpdateResponse{
-				Cmd: func() tea.Msg {
-					return FocusRequestMsg{RequestedPath: p.GetPath(), Relation: Self}
-				},
-				UpPropagateMsg: nil,
+			return func() tea.Msg {
+				return FocusRequestMsg{RequestedPath: p.GetPath(), Relation: Self}
 			}
 		}
 	}
 	if msg, ok := msg.(ConsiderForLocalShortcutMsg); ok {
 		if p.LocalShortcut.IsMatch(msg.EventKey) {
-			return &UpdateResponse{
-				Cmd: func() tea.Msg {
-					return FocusRequestMsg{RequestedPath: p.GetPath(), Relation: Self}
-				},
-				UpPropagateMsg: nil,
+			return func() tea.Msg {
+				return FocusRequestMsg{RequestedPath: p.GetPath(), Relation: Self}
 			}
 		}
 	}
 	return nil
 }
 
-func GetStylingSize(s lipgloss.Style) (int, int) {
-	return s.GetHorizontalMargins() + s.GetHorizontalPadding() + s.GetHorizontalBorderSize(),
-		s.GetVerticalMargins() + s.GetVerticalPadding() + s.GetVerticalBorderSize()
+func GetStylingSize(s lipgloss.Style) (int, int, int, int) {
+
+	horz_left := s.GetBorderLeftSize() + s.GetMarginLeft() + s.GetPaddingLeft()
+	vert_top := s.GetBorderTopSize() + s.GetMarginTop() + s.GetPaddingTop()
+
+	horz_total := s.GetHorizontalMargins() + s.GetHorizontalPadding() + s.GetHorizontalBorderSize()
+	vert_total := s.GetVerticalMargins() + s.GetVerticalPadding() + s.GetVerticalBorderSize()
+	return horz_left, vert_top, horz_total, vert_total
 }
 
-func (p *ShortCutPanel) HandleSizeMsg(msg ResizeMsg) *UpdateResponse {
+func (p *ShortCutPanel) HandleSizeMsg(msg ResizeMsg) tea.Cmd {
 	DebugPrintf("ShortCutPanel received size message: %+v\n", msg)
 	p.redraw = true
 	if p.view != nil {
 		p.view.Resize(msg.X, msg.Y, msg.Width, msg.Height)
 	}
 
-	_, tvert := GetStylingSize(p.TitleStyle)
+	_, _, _, tvert := GetStylingSize(p.TitleStyle)
 	text_height := 1 + tvert
-	horz, vert := GetStylingSize(p.PanelStyle.UnfocusedBorder)
+	start_x, start_y, horz, vert := GetStylingSize(p.PanelStyle.UnfocusedBorder)
 	width := msg.Width - horz
 	height := msg.Height - vert - text_height
 	//p.TitleStyle = p.TitleStyle.Width(width)
-	ur := p.Panel.HandleSizeMsg(ResizeMsg{EventResize: msg.EventResize, X: msg.X, Y: msg.Y, Width: width, Height: height})
+	p.modelView.Resize(start_x, start_y+text_height, width, height)
+	cmd := p.Model.Update(ResizeMsg{EventResize: msg.EventResize, X: msg.X, Y: msg.Y, Width: width, Height: height})
 
 	h, w := msg.Height-2, msg.Width-2
 	p.PanelStyle.UnfocusedBorder = p.PanelStyle.UnfocusedBorder.Width(w)
 	p.PanelStyle.FocusedBorder = p.PanelStyle.FocusedBorder.Width(w)
 	p.PanelStyle.UnfocusedBorder = p.PanelStyle.UnfocusedBorder.Height(h)
 	p.PanelStyle.FocusedBorder = p.PanelStyle.FocusedBorder.Height(h)
-	return ur
-}
-
-func (p *ShortCutPanel) SetPath(path []int) {
-	//DebugPrintf("ShortCutPanel.SetPath() called for %v\n", path)
-	p.Panel.SetPath(path)
+	return cmd
 }

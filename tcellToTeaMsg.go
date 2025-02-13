@@ -82,21 +82,26 @@ var tCellKeyToTeaMsg = map[tcell.Key]tea.KeyMsg{
 	tcell.KeyCtrlCarat:     tea.KeyMsg{Type: tea.KeyCtrlCaret},
 }
 
-type tcellKeyToTeaMsgResult struct {
-	msg tea.KeyMsg
-	ok  bool
+type TcellKeyToTeaMsgResult struct {
+	Msg tea.KeyMsg
+	Ok  bool
 }
 
-func MapTCellKeyToTeaMsg(ev tcell.EventKey) tcellKeyToTeaMsgResult {
+func MapKeyMsg(msg KeyMsg) (tea.KeyMsg, bool) {
+	a := MapTCellKeyToTeaMsg(*msg.EventKey)
+	return a.Msg, a.Ok
+}
+
+func MapTCellKeyToTeaMsg(ev tcell.EventKey) TcellKeyToTeaMsgResult {
 	if msg, ok := tCellKeyToTeaMsg[ev.Key()]; ok {
-		return tcellKeyToTeaMsgResult{msg: msg, ok: true}
+		return TcellKeyToTeaMsgResult{Msg: msg, Ok: true}
 	}
 	if ev.Rune() != 0 {
 		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{ev.Rune()}}
 		if ev.Modifiers() == tcell.ModAlt {
 			msg.Alt = true
 		}
-		return tcellKeyToTeaMsgResult{msg: msg, ok: true}
+		return TcellKeyToTeaMsgResult{Msg: msg, Ok: true}
 	}
-	return tcellKeyToTeaMsgResult{ok: false}
+	return TcellKeyToTeaMsgResult{Ok: false}
 }

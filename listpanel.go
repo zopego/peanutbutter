@@ -12,33 +12,26 @@ import (
 // that can be displayed in a horizontal, vertical, or stacked layout
 // List panels also support handling focus propagation
 type ListPanel struct {
-	Panels       []IPanel
-	path         []int // Path to uniquely identify this node in the hierarchy
-	MsgForParent tea.Msg
-	Layout       Layout
-	Selected     int // Index of the selected panel, only used if the orientation is Vertical
-	Name         string
-	view         *tcellviews.ViewPort
-	redraw       bool
+	Panels             []IPanel
+	path               []int // Path to uniquely identify this node in the hierarchy
+	MsgForParent       tea.Msg
+	Layout             Layout
+	Selected           int // Index of the selected panel, only used if the orientation is Vertical
+	Name               string
+	view               *tcellviews.ViewPort
+	redraw             bool
+	cmds               chan tea.Cmd
+	MarkMessageNotUsed func(msg *KeyMsg)
 }
 
 var _ IPanel = &ListPanel{}
 
 func (p *ListPanel) SetView(view *tcellviews.ViewPort) {
 	p.view = view
-	for i, panel := range p.Panels {
+	for _, panel := range p.Panels {
 		newView := tcellviews.NewViewPort(p.view, 0, 0, -1, -1)
 		panel.SetView(newView)
-		p.Panels[i] = panel.(IPanel)
 	}
-}
-
-func (p *ListPanel) HandleFocusGranted() *UpdateResponse {
-	return nil
-}
-
-func (p *ListPanel) HandleFocusRevoked() *UpdateResponse {
-	return nil
 }
 
 func (p *ListPanel) Draw(force bool) bool {
@@ -48,9 +41,11 @@ func (p *ListPanel) Draw(force bool) bool {
 	if p.Layout.Orientation == ZStacked {
 		redrawn = p.Panels[p.Selected].Draw(continueForce)
 	} else {
-		for i, panel := range p.Panels {
-			redrawn = redrawn || panel.Draw(continueForce)
-			p.Panels[i] = panel.(IPanel)
+		for _, panel := range p.Panels {
+			panelDrawn := panel.Draw(continueForce)
+			if panelDrawn {
+				redrawn = true
+			}
 		}
 	}
 	p.redraw = false
@@ -80,19 +75,18 @@ func (m *ListPanel) SetMsgForParent(msg tea.Msg) {
 	m.MsgForParent = msg
 }
 
-func (m *ListPanel) Init() tea.Cmd {
+func (m *ListPanel) Init(cmds chan tea.Cmd, MarkMessageNotUsed func(msg *KeyMsg)) {
+	m.cmds = cmds
+	m.MarkMessageNotUsed = MarkMessageNotUsed
 	DebugPrintf("ListPanel.Init() called for %v\n", m.path)
-	var cmds []tea.Cmd
 	for _, panel := range m.Panels {
-		cmd := panel.Init()
-		cmds = append(cmds, cmd)
+		panel.Init(cmds, MarkMessageNotUsed)
 	}
 	if !m.IsLayoutValid() {
 		fmt.Printf("Invalid layout: %+v -- \n", m.path)
 		m.AreDimensionsValid(true)
 		panic("-- Invalid layout")
 	}
-	return tea.Batch(cmds...)
 }
 
 func (m *ListPanel) SetPath(path []int) {
@@ -121,12 +115,13 @@ type HasView interface {
 	View() string
 }
 
+/*
 func (m *ListPanel) View() string {
 	if m.Layout.Orientation == ZStacked {
 		return m.Panels[m.Selected].View()
 	}
 	return m.ListView()
-}
+}*/
 
 func (m *ListPanel) ListView() string {
 	var views []string
@@ -142,72 +137,60 @@ func (m *ListPanel) ListView() string {
 	return lipgloss.JoinVertical(lipgloss.Left, views...)
 }
 
-func (m *ListPanel) HandleZStackedMsg(msg tea.Msg) *UpdateResponse {
+func (m *ListPanel) HandleZStackedMsg(msg tea.Msg) {
 	if msg, ok := msg.(ConsiderForLocalShortcutMsg); ok {
-		return m.Panels[m.Selected].Update(msg)
+		m.Panels[m.Selected].HandleMessage(msg)
 	}
 	if msg, ok := msg.(SelectTabIndexMsg); ok {
 		if msg.ListPanelName == m.Name {
 			m.SetSelected(msg.Index)
 			m.redraw = true
-			return nil
 		}
 	}
-	return nil
 }
 
-func (m *ListPanel) Update(msg tea.Msg) *UpdateResponse {
-	if msg, ok := msg.(ResizeMsg); ok {
-		return m.HandleSizeMsg(msg)
-	}
+func (m *ListPanel) HandleMessage(msg Msg) {
+	p := GetMessageHandlingType(msg)
+	DebugPrintf("ListPanel %v received message: %T %+v %T\n", m.path, msg, msg, p)
 
 	if m.Layout.Orientation == ZStacked {
-		return m.HandleZStackedMsg(msg)
+		m.HandleZStackedMsg(msg)
 	}
 
-	DebugPrintf("ListPanel %v received message: %T %+v\n", m.path, msg, msg)
-	p := GetMessageHandlingType(msg)
 	switch msg := p.(type) {
+	case ResizeMsg:
+		m.HandleSizeMsg(msg)
+
 	case FocusPropagatedMsgType:
 		for _, panel := range m.Panels {
 			if panel.IsFocused() {
-				return panel.Update(msg.Msg)
+				panel.HandleMessage(msg.Msg)
 			}
 		}
-	case UntypedMsgType:
-		// this really should not happen
-		return nil
 
 	case RoutedMsgType:
 		l_mypath := len(m.path)
-		l_msgpath := len(msg.GetRoutePath())
+		r_path := msg.GetRoutePath().Path
+		l_msgpath := len(r_path)
 		if l_mypath == l_msgpath {
 			// This message is destined for this listpanel
-			return m.HandleRoutedMessage(msg.Msg)
+			panic("ListPanel.HandleMessage() received a RoutedMsgType for this ListPanel")
+			//return m.HandleRoutedMessage(msg.Msg)
 		} else {
-			nextIdx := msg.GetRoutePath()[l_mypath]
+			nextIdx := r_path[l_mypath]
 			if nextIdx < 0 || nextIdx > len(m.Panels) {
-				return nil
+				return
 			}
-			return m.Panels[nextIdx].Update(msg.Msg)
+			m.Panels[nextIdx].HandleMessage(msg.Msg)
 		}
 
 	case BroadcastMsgType:
-		urs := []*UpdateResponse{}
 		for _, panel := range m.Panels {
 			//DebugPrintf("ListPanel %v broadcasting message to child %v\n", m.path, i)
 			//DebugPrintf("panel: %T\n", panel)
-			ur := panel.Update(msg.Msg)
-			ur.CombineHandleUpPropagate(m.HandleMessageFromChild)
-			urs = append(urs, ur)
+			panel.HandleMessage(msg.Msg)
 		}
-		return CombineUpdateResponses(urs...)
-
-	case RequestMsgType:
-		return nil
 	}
-
-	return nil
 }
 
 func (m *ListPanel) GetFocusIndex() int {
@@ -219,7 +202,7 @@ func (m *ListPanel) GetFocusIndex() int {
 	return -1
 }
 
-func handleFocusIndex(focusIndex int, direction Direction, len int) int {
+func handleFocusIndex(focusIndex int, direction Relation, len int) int {
 	if direction == Up {
 		focusIndex--
 	}
@@ -236,6 +219,7 @@ func handleFocusIndex(focusIndex int, direction Direction, len int) int {
 	return ((focusIndex % len) + len) % len
 }
 
+/* This is deprecated because we will not be receiving messages from children
 func (m *ListPanel) HandleMessageFromChild(msg tea.Msg) *UpdateResponse {
 	DebugPrintf("ListPanel %v received message from child: %T %+v\n", m.path, msg, msg)
 	if msg, ok := msg.(GeometricFocusRequestMsg); ok {
@@ -264,9 +248,9 @@ func (m *ListPanel) HandleMessageFromChild(msg tea.Msg) *UpdateResponse {
 	}
 	m.SetMsgForParent(msg)
 	return nil
-}
+}*/
 
-func (m *ListPanel) HandleRoutedMessage(msg tea.Msg) *UpdateResponse {
+/* func (m *ListPanel) HandleRoutedMessage(msg tea.Msg) *UpdateResponse {
 	DebugPrintf("ListPanel %v received routed message: %T %+v\n", m.path, msg, msg)
 	if msg, ok := msg.(FocusGrantMsg); ok {
 		// we'll add a path segment to the first panel in the list
@@ -277,14 +261,13 @@ func (m *ListPanel) HandleRoutedMessage(msg tea.Msg) *UpdateResponse {
 		}
 	}
 	return nil
-}
+}*/
 
 func (m ListPanel) GetLayout() Layout {
 	return m.Layout
 }
 
-func (m *ListPanel) HandleZStackedSizeMsg(msg ResizeMsg) *UpdateResponse {
-	urs := []*UpdateResponse{}
+func (m *ListPanel) HandleZStackedSizeMsg(msg ResizeMsg) {
 	for _, panel := range m.Panels {
 		newMsg := ResizeMsg{
 			X:      0,
@@ -292,20 +275,19 @@ func (m *ListPanel) HandleZStackedSizeMsg(msg ResizeMsg) *UpdateResponse {
 			Width:  msg.Width,
 			Height: msg.Height,
 		}
-		urs = append(urs, panel.HandleSizeMsg(newMsg))
+		panel.HandleMessage(newMsg)
 	}
-	return CombineUpdateResponses(urs...)
 }
 
-func (m *ListPanel) HandleSizeMsg(msg ResizeMsg) *UpdateResponse {
+func (m *ListPanel) HandleSizeMsg(msg ResizeMsg) {
 	DebugPrintf("ListPanel %v received size message: %+v\n", m.path, msg)
 	if m.view != nil {
 		m.view.Resize(msg.X, msg.Y, msg.Width, msg.Height)
 	}
 
-	urs := []*UpdateResponse{}
 	if m.Layout.Orientation == ZStacked {
-		urs = append(urs, m.HandleZStackedSizeMsg(msg))
+		m.HandleZStackedSizeMsg(msg)
+		return
 	}
 
 	if m.Layout.Orientation == Horizontal {
@@ -321,7 +303,7 @@ func (m *ListPanel) HandleSizeMsg(msg ResizeMsg) *UpdateResponse {
 				Height: h,
 			}
 			X += w
-			urs = append(urs, panel.HandleSizeMsg(newMsg))
+			panel.HandleMessage(newMsg)
 		}
 	} else {
 		heights := m.Layout.CalculateDims(msg.Height)
@@ -336,11 +318,9 @@ func (m *ListPanel) HandleSizeMsg(msg ResizeMsg) *UpdateResponse {
 				Height: h,
 			}
 			Y += h
-			urs = append(urs, panel.HandleSizeMsg(newMsg))
+			panel.HandleMessage(newMsg)
 		}
 	}
-
-	return CombineUpdateResponses(urs...)
 }
 
 func (m *ListPanel) GetSelected() IPanel {
