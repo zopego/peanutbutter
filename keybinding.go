@@ -72,8 +72,10 @@ func (keybinding *KeyBinding) IsEnabled() bool {
 func (keybinding *KeyBinding) IsMatch(eventKey *tcell.EventKey) bool {
 	for _, keyDef := range keybinding.KeyDefs {
 		if eventKey.Key() == keyDef.Key &&
-			eventKey.Modifiers() == keyDef.Modifiers &&
-			eventKey.Rune() == keyDef.Rune {
+			eventKey.Modifiers() == keyDef.Modifiers {
+			if eventKey.Key() == tcell.KeyRune {
+				return eventKey.Rune() == keyDef.Rune
+			}
 			return true
 		}
 	}
