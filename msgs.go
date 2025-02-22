@@ -1,4 +1,4 @@
-package panelbubble
+package peanutbutter
 
 import (
 	tcell "github.com/gdamore/tcell/v2"

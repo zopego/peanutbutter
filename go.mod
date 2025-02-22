@@ -1,4 +1,4 @@
-module github.com/zopego/panelbubble
+module github.com/zopego/peanutbutter
 
 go 1.23
 

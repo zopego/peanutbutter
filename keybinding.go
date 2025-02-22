@@ -1,4 +1,4 @@
-package panelbubble
+package peanutbutter
 
 import (
 	tea "github.com/charmbracelet/bubbletea"

@@ -1,6 +1,6 @@
 # Pannelbubble
 
-Panelbubble is a component library for bubbletea that provides the ability to compose
+peanutbutter is a component library for bubbletea that provides the ability to compose
 terminal applications with multiple panels. The panels can be organized in a hierarchy,
 and the library provides mechanisms for focus management, contextual help, and global
 and local shortcuts.
