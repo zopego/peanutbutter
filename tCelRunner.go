@@ -43,19 +43,14 @@ func (t *pbRunModel) update(ev tcell.Event) {
 		}
 
 	case *tcell.EventKey:
-		if ev.Key() == tcell.KeyCtrlC {
-			DebugPrintf("tcellRun: Ctrl-C\n")
-			t.s.Fini()
-			t.quit <- struct{}{}
-			return
-		}
-		t.model.Update(ev)
+		unused := false
+		kmsg := KeyMsg{EventKey: ev, Unused: &unused}
+		t.model.Update(kmsg)
 		if t.model.Draw() {
 			t.s.Show()
 		}
 
 	case *tcell.EventResize:
-		//t.s.Sync()
 		w, h := ev.Size()
 		teamsg := tea.WindowSizeMsg{Width: int(w), Height: int(h)}
 		t.model.Update(teamsg)
@@ -118,6 +113,8 @@ func Run(model IRootModel) {
 		quit:  quit,
 	}
 
+	cmds <- model.Init(cmds, viewPort)
+	evts := make(chan tcell.Event, 100)
 	go func() {
 		for cmd := range cmds {
 			if cmd == nil {
@@ -137,15 +134,25 @@ func Run(model IRootModel) {
 				}
 			}()
 		}
+		screen.Fini()
 	}()
 
-	cmds <- model.Init(cmds, viewPort)
+	go func() {
+		for evt := range evts {
+			tmodel.update(evt)
+		}
+	}()
 
 	for {
 		evt := screen.PollEvent()
 		if evt == nil {
+			close(evts)
+			close(quit)
 			break
 		}
-		tmodel.update(evt)
+		evts <- evt
 	}
+
+	<-tmodel.quit
+
 }

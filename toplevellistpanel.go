@@ -1,10 +1,7 @@
 package peanutbutter
 
 import (
-	"time"
-
 	tea "github.com/charmbracelet/bubbletea"
-	tcell "github.com/gdamore/tcell/v2"
 )
 
 // TopLevelListPanel is a special case of ListPanel
@@ -17,21 +14,15 @@ import (
 // before passing a key-stroke as a regular key-stroke message
 type TopLevelListPanel struct {
 	*ListPanel
-	cmds               chan tea.Cmd
-	MarkMessageNotUsed func(msg *KeyMsg)
+	cmds chan tea.Cmd
 }
 
 var _ IPanel = &TopLevelListPanel{}
 
-func (m *TopLevelListPanel) Init(cmds chan tea.Cmd, MarkMessageNotUsed func(msg *KeyMsg)) {
+func (m *TopLevelListPanel) Init(cmds chan tea.Cmd) {
 	m.ListPanel.SetPath([]int{})
-	m.MarkMessageNotUsed = MarkMessageNotUsed
 	m.cmds = cmds
-	m.ListPanel.Init(cmds, m.MessageNotUsedInternal)
-}
-
-func (m *TopLevelListPanel) MessageNotUsedInternal(msg *KeyMsg) {
-	m.MarkMessageNotUsed(msg)
+	m.ListPanel.Init(cmds)
 }
 
 func (m *TopLevelListPanel) FigureOutFocusGrant(msg FocusRequestMsg) *FocusGrantMsg {
@@ -57,10 +48,6 @@ func (m *TopLevelListPanel) HandleMessage(msg Msg) {
 			}
 			m.cmds <- newCmd
 		}
-
-	case *tcell.EventKey:
-		k := KeyMsg{EventKey: msg, Id: time.Now().UnixNano()}
-		m.ListPanel.HandleMessage(k)
 
 	default:
 		m.ListPanel.HandleMessage(msg)

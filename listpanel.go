@@ -12,16 +12,16 @@ import (
 // that can be displayed in a horizontal, vertical, or stacked layout
 // List panels also support handling focus propagation
 type ListPanel struct {
-	Panels             []IPanel
-	path               []int // Path to uniquely identify this node in the hierarchy
-	MsgForParent       tea.Msg
-	Layout             Layout
-	Selected           int // Index of the selected panel, only used if the orientation is Vertical
-	Name               string
-	view               *tcellviews.ViewPort
-	redraw             bool
-	cmds               chan tea.Cmd
-	MarkMessageNotUsed func(msg *KeyMsg)
+	Panels       []IPanel
+	path         []int // Path to uniquely identify this node in the hierarchy
+	MsgForParent tea.Msg
+	Layout       Layout
+	Selected     int // Index of the selected panel, only used if the orientation is ZStacked
+	Name         string
+	view         *tcellviews.ViewPort
+	redraw       bool
+	cmds         chan tea.Cmd
+	tabHidden    bool
 }
 
 var _ IPanel = &ListPanel{}
@@ -75,12 +75,11 @@ func (m *ListPanel) SetMsgForParent(msg tea.Msg) {
 	m.MsgForParent = msg
 }
 
-func (m *ListPanel) Init(cmds chan tea.Cmd, MarkMessageNotUsed func(msg *KeyMsg)) {
+func (m *ListPanel) Init(cmds chan tea.Cmd) {
 	m.cmds = cmds
-	m.MarkMessageNotUsed = MarkMessageNotUsed
 	DebugPrintf("ListPanel.Init() called for %v\n", m.path)
 	for _, panel := range m.Panels {
-		panel.Init(cmds, MarkMessageNotUsed)
+		panel.Init(cmds)
 	}
 	if !m.IsLayoutValid() {
 		fmt.Printf("Invalid layout: %+v -- \n", m.path)
@@ -90,7 +89,8 @@ func (m *ListPanel) Init(cmds chan tea.Cmd, MarkMessageNotUsed func(msg *KeyMsg)
 }
 
 func (m *ListPanel) SetPath(path []int) {
-	m.path = path
+	m.path = make([]int, len(path))
+	copy(m.path, path)
 	for i, panel := range m.Panels {
 		panel.SetPath(append(m.path, i))
 	}
@@ -114,14 +114,6 @@ func (m *ListPanel) GetPath() []int {
 type HasView interface {
 	View() string
 }
-
-/*
-func (m *ListPanel) View() string {
-	if m.Layout.Orientation == ZStacked {
-		return m.Panels[m.Selected].View()
-	}
-	return m.ListView()
-}*/
 
 func (m *ListPanel) ListView() string {
 	var views []string
@@ -226,49 +218,6 @@ func (m *ListPanel) HandleFocusRequestMsg(msg FocusRequestMsg) *FocusGrantMsg {
 	return &FocusGrantMsg{RoutePath: &RoutePath{Path: m.GetPath()}, Relation: msg.Relation}
 }
 
-/*
-func (m *ListPanel) HandleRoutedMessage(msg tea.Msg) {
-	DebugPrintf("ListPanel %v received message from child: %T %+v\n", m.path, msg, msg)
-	if msg, ok := msg.(FocusGrantMsg); ok {
-		focusIndex := msg.RequesterPath
-		direction := msg.Relation
-		var path *[]int = nil
-		if m.Layout.Orientation == Horizontal && (msg.Direction == Left || msg.Direction == Right) {
-			// first, lets find the currently focused panel
-			focusIndex = handleFocusIndex(focusIndex, msg.Direction, len(m.Panels))
-			path = &[]int{focusIndex}
-		}
-		if m.Layout.Orientation == Vertical && (msg.Direction == Up || msg.Direction == Down) {
-			focusIndex = handleFocusIndex(focusIndex, msg.Direction, len(m.Panels))
-			path = &[]int{focusIndex}
-		}
-		if path != nil {
-			return &UpdateResponse{
-				Cmd: func() tea.Msg {
-					return FocusRequestMsg{Relation: Self, RequestedPath: *path}
-				},
-				UpPropagateMsg: nil,
-			}
-		}
-	}
-	m.SetMsgForParent(msg)
-	return nil
-}
-*/
-
-/* func (m *ListPanel) HandleRoutedMessage(msg tea.Msg) *UpdateResponse {
-	DebugPrintf("ListPanel %v received routed message: %T %+v\n", m.path, msg, msg)
-	if msg, ok := msg.(FocusGrantMsg); ok {
-		// we'll add a path segment to the first panel in the list
-		if len(m.Panels) > 0 {
-			newmsg := msg
-			newmsg.RoutePath.Path = append(newmsg.RoutePath.Path, 0)
-			return m.Panels[0].Update(newmsg)
-		}
-	}
-	return nil
-}*/
-
 func (m ListPanel) GetLayout() Layout {
 	return m.Layout
 }
@@ -352,7 +301,36 @@ func (m *ListPanel) setSelectedModel(model IPanel) {
 func (m *ListPanel) SetSelected(i int) tea.Cmd {
 	DebugPrintf("ListPanel %v setting selected to %v\n", m.path, i)
 	m.Selected = i
-	return func() tea.Msg {
-		return SelectedTabIndexMsg{Index: i, ListPanelName: m.Name}
+	m.redraw = true
+	for i, panel := range m.Panels {
+		if i == m.Selected {
+			panel.SetTabHidden(false)
+		} else {
+			panel.SetTabHidden(true)
+		}
 	}
+	return nil
+}
+
+func (m *ListPanel) GetName() string {
+	return m.Name
+}
+
+func (m *ListPanel) TabNext() tea.Cmd {
+	return m.SetSelected((m.Selected + 1) % len(m.Panels))
+}
+
+func (m *ListPanel) TabPrev() tea.Cmd {
+	return m.SetSelected((m.Selected - 1 + len(m.Panels)) % len(m.Panels))
+}
+
+func (m *ListPanel) SetTabHidden(hidden bool) {
+	m.tabHidden = hidden
+	for _, panel := range m.Panels {
+		panel.SetTabHidden(hidden)
+	}
+}
+
+func (m *ListPanel) IsInHiddenTab() bool {
+	return m.tabHidden
 }

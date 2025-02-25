@@ -81,7 +81,19 @@ type FocusRevokeMsg struct{}
 
 type KeyMsg struct {
 	*tcell.EventKey
-	Id int64
+	Unused *bool
+}
+
+func (keyMsg *KeyMsg) IsUsed() bool {
+	return !*keyMsg.Unused
+}
+
+func (keyMsg *KeyMsg) SetUnused() {
+	*keyMsg.Unused = true
+}
+
+func (keyMsg *KeyMsg) Matches(keyDef KeyDef) bool {
+	return keyDef.Matches(keyMsg.EventKey)
 }
 
 type ConsiderForLocalShortcutMsg struct {

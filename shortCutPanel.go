@@ -1,6 +1,8 @@
 package peanutbutter
 
 import (
+	"fmt"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	tcellviews "github.com/gdamore/tcell/v2/views"
@@ -40,6 +42,7 @@ type ShortCutPanel struct {
 	view               *tcellviews.ViewPort
 	MarkMessageNotUsed func(msg *KeyMsg)
 	modelView          *tcellviews.ViewPort
+	tabHidden          bool
 }
 
 type ShortCutPanelOption func(*ShortCutPanel)
@@ -99,14 +102,17 @@ func NewShortCutPanel(model ILeafModel, opts ...ShortCutPanelOption) *ShortCutPa
 
 var _ IPanel = &ShortCutPanel{}
 
-//var _ CanSendMsgToParent = &ShortCutPanel{}
-
 func (p *ShortCutPanel) IsFocused() bool {
 	return p.focus
 }
 
+func (p *ShortCutPanel) AddKeyBinding(kb KeyBinding) {
+	p.KeyBindings = append(p.KeyBindings, kb)
+}
+
 func (p *ShortCutPanel) SetPath(path []int) {
-	p.path = path
+	p.path = make([]int, len(path))
+	copy(p.path, path)
 }
 
 func (p *ShortCutPanel) RoutedCmd(cmd tea.Cmd) tea.Cmd {
@@ -115,6 +121,10 @@ func (p *ShortCutPanel) RoutedCmd(cmd tea.Cmd) tea.Cmd {
 
 func (p *ShortCutPanel) GetPath() []int {
 	return p.path
+}
+
+func (p *ShortCutPanel) GetName() string {
+	return p.Name
 }
 
 func (p *ShortCutPanel) SetView(view *tcellviews.ViewPort) {
@@ -166,14 +176,11 @@ func (p *ShortCutPanel) Draw(force bool) bool {
 	return false
 }
 
-func (p *ShortCutPanel) Init(cmds chan tea.Cmd, MarkMessageNotUsed func(msg *KeyMsg)) {
+func (p *ShortCutPanel) Init(cmds chan tea.Cmd) {
 	DebugPrintf("ShortCutPanel.Init() called for %v\n", p.GetPath())
 	p.cmds = cmds
-	p.MarkMessageNotUsed = MarkMessageNotUsed
 	var batchCmds []tea.Cmd
-	cmd := p.Model.Init(func(msg *KeyMsg) {
-		p.MarkMessageNotUsedInternal(*msg)
-	})
+	cmd := p.Model.Init()
 	if cmd != nil {
 		batchCmds = append(batchCmds, cmd)
 	}
@@ -191,7 +198,7 @@ func (p *ShortCutPanel) borderView() string {
 		borderStyle = p.PanelStyle.FocusedBorder
 	}
 	return borderStyle.Render(
-		lipgloss.JoinVertical(lipgloss.Top, p.TitleStyle.Render(p.Title)),
+		lipgloss.JoinVertical(lipgloss.Top, p.TitleStyle.Render(p.Title+" "+fmt.Sprintf("%+v", p.GetPath()))),
 	)
 }
 
@@ -237,19 +244,16 @@ func (p *ShortCutPanel) HandleMessage(msg Msg) {
 		p.redraw = true
 		cmd = p.Model.Update(msg)
 	default:
-		cmd = p.Model.Update(msg)
+		cmds := []tea.Cmd{p.Model.Update(msg)}
+		if keyMsg, ok := msg.(KeyMsg); ok {
+			if !keyMsg.IsUsed() {
+				cmds = append(cmds, p.HandleMessageFromChild(keyMsg))
+			}
+		}
+		p.cmds <- tea.Batch(cmds...)
 	}
 	if cmd != nil {
 		p.cmds <- p.RoutedCmd(cmd)
-	}
-}
-
-func (p *ShortCutPanel) MarkMessageNotUsedInternal(msg KeyMsg) {
-	cmd := p.HandleMessageFromChild(msg)
-	if cmd != nil {
-		p.cmds <- cmd
-	} else {
-		p.MarkMessageNotUsed(&msg)
 	}
 }
 
@@ -270,8 +274,12 @@ func (p *ShortCutPanel) HandleSizeMsg(msg ResizeMsg) tea.Cmd {
 		p.view.Resize(msg.X, msg.Y, msg.Width, msg.Height)
 	}
 
-	_, _, _, tvert := GetStylingSize(p.TitleStyle)
-	text_height := 1 + tvert
+	text_height := 0
+	if p.Title != "" {
+		_, _, _, tvert := GetStylingSize(p.TitleStyle)
+		text_height = 1 + tvert
+	}
+
 	start_x, start_y, horz, vert := GetStylingSize(p.PanelStyle.UnfocusedBorder)
 	width := msg.Width - horz
 	height := msg.Height - vert - text_height
@@ -292,4 +300,12 @@ func (p *ShortCutPanel) GetLeafPanelCenters() []PanelCenter {
 	return []PanelCenter{
 		{X: x + (X / 2), Y: y + (Y / 2), Path: p.GetPath()},
 	}
+}
+
+func (p *ShortCutPanel) IsInHiddenTab() bool {
+	return p.tabHidden
+}
+
+func (p *ShortCutPanel) SetTabHidden(hidden bool) {
+	p.tabHidden = hidden
 }
