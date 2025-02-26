@@ -1,8 +1,6 @@
 package peanutbutter
 
 import (
-	"fmt"
-	"os"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -92,16 +90,7 @@ func HandleBatchCmds(msg Msg) []tea.Cmd {
 	return nil
 }
 
-func Run(model IRootModel) {
-	screen, err := tcell.NewScreen()
-	if err != nil {
-		fmt.Printf("Error creating screen: %v\n", err)
-		os.Exit(1)
-	}
-	if err = screen.Init(); err != nil {
-		fmt.Printf("Error initializing screen: %v\n", err)
-		os.Exit(1)
-	}
+func Run(model IRootModel, screen tcell.Screen) {
 
 	cmds := make(chan tea.Cmd, 100)
 	viewPort := tcellviews.NewViewPort(screen, 0, 0, -1, -1)
