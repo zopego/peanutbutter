@@ -52,8 +52,8 @@ func (t *pbRunModel) update(ev tcell.Event) {
 
 	case *tcell.EventResize:
 		w, h := ev.Size()
-		teamsg := tea.WindowSizeMsg{Width: int(w), Height: int(h)}
-		t.model.Update(teamsg)
+		resizeMsg := ResizeMsg{EventResize: ev, Width: int(w), Height: int(h)}
+		t.model.Update(resizeMsg)
 		redraw := t.model.Draw()
 		if redraw {
 			t.s.Sync()
