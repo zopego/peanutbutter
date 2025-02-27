@@ -5,6 +5,7 @@ go 1.23
 toolchain go1.23.2
 
 require (
+	github.com/catppuccin/go v0.3.0
 	github.com/charmbracelet/bubbles v0.20.0
 	github.com/charmbracelet/bubbletea v1.2.4
 	github.com/charmbracelet/lipgloss v1.0.0

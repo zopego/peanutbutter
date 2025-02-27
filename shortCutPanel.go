@@ -1,11 +1,14 @@
 package peanutbutter
 
 import (
-	"fmt"
-
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	tcellviews "github.com/gdamore/tcell/v2/views"
+	"github.com/mattn/go-runewidth"
+)
+
+const (
+	titleOffset = 2
 )
 
 type PanelStyle struct {
@@ -16,9 +19,24 @@ type PanelStyle struct {
 type ShortCutPanelConfig struct {
 	ContextualHelp string
 	Title          string
-	TitleStyle     lipgloss.Style
-	PanelStyle     PanelStyle
-	KeyBindings    []KeyBinding
+	FocusedTitle   lipgloss.Style
+	UnfocusedTitle lipgloss.Style
+	PanelStyle
+	KeyBindings []KeyBinding
+}
+
+var DefaultPanelConfig = ShortCutPanelConfig{
+	PanelStyle: PanelStyle{
+		FocusedBorder: lipgloss.NewStyle().
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(LgColor(Plt.Lavender())),
+
+		UnfocusedBorder: lipgloss.NewStyle().
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(LgColor(Plt.Text())),
+	},
+	FocusedTitle:   lipgloss.NewStyle().Bold(true).Padding(0, 1),
+	UnfocusedTitle: lipgloss.NewStyle().Padding(0, 1),
 }
 
 // ShortCutPanel is an extension of Panel that can handle
@@ -59,9 +77,15 @@ func WithTitle(title string) ShortCutPanelOption {
 	}
 }
 
-func WithTitleStyle(style lipgloss.Style) ShortCutPanelOption {
+func WithFocusedTitleStyle(style lipgloss.Style) ShortCutPanelOption {
 	return func(config *ShortCutPanel) {
-		config.TitleStyle = style
+		config.FocusedTitle = style
+	}
+}
+
+func WithUnfocusedTitleStyle(style lipgloss.Style) ShortCutPanelOption {
+	return func(config *ShortCutPanel) {
+		config.UnfocusedTitle = style
 	}
 }
 
@@ -91,6 +115,7 @@ func WithKeyBindingMaker(keyBindingMaker func(*ShortCutPanel) KeyBinding) ShortC
 
 func NewShortCutPanel(model ILeafModel, opts ...ShortCutPanelOption) *ShortCutPanel {
 	spanel := &ShortCutPanel{}
+	spanel.ShortCutPanelConfig = DefaultPanelConfig
 	for _, opt := range opts {
 		opt(spanel)
 	}
@@ -132,7 +157,7 @@ func (p *ShortCutPanel) SetView(view *tcellviews.ViewPort) {
 	p.modelView = tcellviews.NewViewPort(p.view, 0, 0, -1, -1)
 }
 
-func (p *ShortCutPanel) DrawModelWithDraw(m ILeafModelWithDraw, force bool) bool {
+func (p *ShortCutPanel) drawModelWithDraw(m ILeafModelWithDraw, force bool) bool {
 	childRedraw := m.Draw(force, p.modelView)
 	if p.redraw || force || childRedraw {
 		DebugPrintf("ShortCutPanel.Draw() called for %v. Redraw: %v, force: %v\n", p.GetPath(), p.redraw, force)
@@ -142,7 +167,7 @@ func (p *ShortCutPanel) DrawModelWithDraw(m ILeafModelWithDraw, force bool) bool
 	return false
 }
 
-func (p *ShortCutPanel) DrawModelWithView(m ILeafModelWithView, force bool) bool {
+func (p *ShortCutPanel) drawModelWithView(m ILeafModelWithView, force bool) bool {
 	if !m.NeedsRedraw() && !force {
 		return false
 	}
@@ -152,20 +177,61 @@ func (p *ShortCutPanel) DrawModelWithView(m ILeafModelWithView, force bool) bool
 	return true
 }
 
+func (p *ShortCutPanel) renderBorder() {
+	borderStyle := p.PanelStyle.UnfocusedBorder
+	if p.IsFocused() {
+		borderStyle = p.PanelStyle.FocusedBorder
+	}
+	str := borderStyle.Render(
+		lipgloss.JoinVertical(lipgloss.Top, ""),
+	)
+	TcellDrawHelper(str, p.view, []*tcellviews.ViewPort{p.modelView})
+}
+
+func (p *ShortCutPanel) renderTitle() {
+	titleStyle := p.UnfocusedTitle
+	if p.IsFocused() {
+		titleStyle = p.FocusedTitle
+	}
+	t := titleStyle.Render(p.Title)
+	p.renderTextOnBorder(t, true, true, titleOffset)
+}
+
+func (p *ShortCutPanel) renderTextOnBorder(text string, topOrBottom bool, leftOrRight bool, offset int) {
+	numCells := runewidth.StringWidth(text)
+	X, Y := p.view.Size()
+	y := 0
+	if !topOrBottom {
+		y = Y - 1
+	}
+	x := offset
+	if !leftOrRight {
+		x = X - numCells - offset
+		if x < 0 {
+			x = 0
+		}
+	}
+
+	miniView := tcellviews.NewViewPort(p.view, x, y, numCells, 1)
+	TcellDrawHelper(text, miniView, []*tcellviews.ViewPort{})
+}
+
 func (p *ShortCutPanel) Draw(force bool) bool {
 	childRedraw := false
 	modelOk := false
 	if m, ok := p.Model.(ILeafModelWithDraw); ok {
-		childRedraw = p.DrawModelWithDraw(m, force)
+		childRedraw = p.drawModelWithDraw(m, force)
 		modelOk = true
 	}
 	if m, ok := p.Model.(ILeafModelWithView); ok {
-		childRedraw = p.DrawModelWithView(m, force)
+		childRedraw = p.drawModelWithView(m, force)
 		modelOk = true
 	}
 	if childRedraw || p.redraw || force {
-		str := p.borderView()
-		TcellDrawHelper(str, p.view, []*tcellviews.ViewPort{p.modelView})
+		//str := p.borderView()
+		//TcellDrawHelper(str, p.view, []*tcellviews.ViewPort{p.modelView})
+		p.renderBorder()
+		p.renderTitle()
 		p.redraw = false
 		return true
 	}
@@ -190,16 +256,6 @@ func (p *ShortCutPanel) Init(cmds chan tea.Cmd) {
 		})
 	}
 	cmds <- tea.Batch(batchCmds...)
-}
-
-func (p *ShortCutPanel) borderView() string {
-	borderStyle := p.PanelStyle.UnfocusedBorder
-	if p.IsFocused() {
-		borderStyle = p.PanelStyle.FocusedBorder
-	}
-	return borderStyle.Render(
-		lipgloss.JoinVertical(lipgloss.Top, p.TitleStyle.Render(p.Title+" "+fmt.Sprintf("%+v", p.GetPath()))),
-	)
 }
 
 func (p *ShortCutPanel) FocusRequestCmd(direction Relation) tea.Cmd {
@@ -284,17 +340,11 @@ func (p *ShortCutPanel) HandleSizeMsg(msg ResizeMsg) tea.Cmd {
 		p.view.Resize(msg.X, msg.Y, msg.Width, msg.Height)
 	}
 
-	text_height := 0
-	if p.Title != "" {
-		_, _, _, tvert := GetStylingSize(p.TitleStyle)
-		text_height = 1 + tvert
-	}
-
 	start_x, start_y, horz, vert := GetStylingSize(p.PanelStyle.UnfocusedBorder)
 	width := msg.Width - horz
-	height := msg.Height - vert - text_height
+	height := msg.Height - vert
 	//p.TitleStyle = p.TitleStyle.Width(width)
-	p.modelView.Resize(start_x, start_y+text_height, width, height)
+	p.modelView.Resize(start_x, start_y, width, height)
 	cmd := p.Model.Update(ResizeMsg{EventResize: msg.EventResize, X: msg.X, Y: msg.Y, Width: width, Height: height})
 
 	h, w := msg.Height-2, msg.Width-2
