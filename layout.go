@@ -18,6 +18,8 @@ const (
 type Layout struct {
 	Orientation Orientation
 	Dimensions  []Dimension
+	Width       int
+	Height      int
 }
 
 // If all fields are 0, it is assumed that the panel should take up the remaining space
@@ -60,42 +62,6 @@ func (d Dimension) IsValid() bool {
 	return false
 }
 
-func (l Layout) IsLayoutValid() bool {
-	return l.AreDimensionsValid(false)
-}
-
-func (l Layout) AreDimensionsValid(printErrors bool) bool {
-	numConstrained := 0
-	numUnspecified := 0
-	for i, d := range l.Dimensions {
-		if !d.IsValid() {
-			if printErrors {
-				fmt.Printf("Invalid dimension at index %d: %+v\n", i, d)
-			}
-			return false
-		}
-		if d.IsConstrained() {
-			numConstrained++
-		}
-		if d.IsUnspecified() {
-			numUnspecified++
-		}
-	}
-	if numConstrained > 1 {
-		if printErrors && numUnspecified != 1 {
-			fmt.Printf("There needs to be exactly one unspecified dimension, found %d unspecified & %d constrained\n", numUnspecified, numConstrained)
-			fmt.Printf("Layout: %+v\n", l)
-		}
-		return numUnspecified == 1
-	} else {
-		if printErrors && numUnspecified > 0 {
-			fmt.Printf("There should be no unspecified dimensions, found %d unspecified & %d constrained\n", numUnspecified, numConstrained)
-			fmt.Printf("Layout: %+v\n", l)
-		}
-		return numUnspecified == 0
-	}
-}
-
 func (l ListPanel) IsLayoutValid() bool {
 	return l.AreDimensionsValid(false)
 }
@@ -110,7 +76,7 @@ func (l ListPanel) AreDimensionsValid(printErrors bool) bool {
 		}
 		return false
 	}
-	return l.Layout.AreDimensionsValid(printErrors)
+	return true
 }
 
 type ResizeMsg struct {

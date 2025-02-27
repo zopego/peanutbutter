@@ -16,6 +16,7 @@ type KeyBinding struct {
 	ShortHelp string
 	LongHelp  string
 	Enabled   bool
+	Override  bool
 	Func      func() tea.Cmd
 }
 

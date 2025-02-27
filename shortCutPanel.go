@@ -211,11 +211,12 @@ func (p *ShortCutPanel) FocusRequestCmd(direction Relation) tea.Cmd {
 	}
 }
 
-func (p *ShortCutPanel) HandleMessageFromChild(msg Msg) tea.Cmd {
+func (p *ShortCutPanel) HandleMessageFromChild(msg Msg, onlyOverrides bool) tea.Cmd {
 	DebugPrintf("ShortCutPanel received message from child: %T %+v\n", msg, msg)
 	if msg, ok := msg.(KeyMsg); ok {
 		for _, keyBinding := range p.KeyBindings {
-			if keyBinding.IsMatch(msg.EventKey) {
+			isValid := (onlyOverrides && keyBinding.Override) || !onlyOverrides
+			if keyBinding.IsMatch(msg.EventKey) && isValid {
 				if keyBinding.Enabled {
 					if keyBinding.Func != nil {
 						return keyBinding.Func()
@@ -223,6 +224,7 @@ func (p *ShortCutPanel) HandleMessageFromChild(msg Msg) tea.Cmd {
 				}
 			}
 		}
+		msg.SetUnused()
 	}
 	return nil
 }
@@ -244,10 +246,18 @@ func (p *ShortCutPanel) HandleMessage(msg Msg) {
 		p.redraw = true
 		cmd = p.Model.Update(msg)
 	default:
-		cmds := []tea.Cmd{p.Model.Update(msg)}
+		cmds := []tea.Cmd{}
+		if keyMsg, ok := msg.(KeyMsg); ok {
+			cmds = append(cmds, p.HandleMessageFromChild(keyMsg, true))
+			if keyMsg.IsUsed() {
+				p.cmds <- tea.Batch(cmds...)
+				return
+			}
+		}
+		cmds = append(cmds, p.Model.Update(msg))
 		if keyMsg, ok := msg.(KeyMsg); ok {
 			if !keyMsg.IsUsed() {
-				cmds = append(cmds, p.HandleMessageFromChild(keyMsg))
+				cmds = append(cmds, p.HandleMessageFromChild(keyMsg, false))
 			}
 		}
 		p.cmds <- tea.Batch(cmds...)

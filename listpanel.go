@@ -253,12 +253,21 @@ func (m *ListPanel) HandleSizeMsg(msg ResizeMsg) {
 		return
 	}
 
+	width := msg.Width
+	height := msg.Height
+	if m.Layout.Width > 0 {
+		width = m.Layout.Width
+	}
+	if m.Layout.Height > 0 {
+		height = m.Layout.Height
+	}
+
 	if m.Layout.Orientation == Horizontal {
-		widths := m.Layout.CalculateDims(msg.Width)
+		widths := m.Layout.CalculateDims(width)
 		X := 0
 		for i, panel := range m.Panels {
 			w := widths[i]
-			h := msg.Height
+			h := height
 			newMsg := ResizeMsg{
 				X:      X,
 				Y:      0,
@@ -269,10 +278,10 @@ func (m *ListPanel) HandleSizeMsg(msg ResizeMsg) {
 			panel.HandleMessage(newMsg)
 		}
 	} else {
-		heights := m.Layout.CalculateDims(msg.Height)
+		heights := m.Layout.CalculateDims(height)
 		Y := 0
 		for i, panel := range m.Panels {
-			w := msg.Width
+			w := width
 			h := heights[i]
 			newMsg := ResizeMsg{
 				X:      0,
