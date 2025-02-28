@@ -52,8 +52,8 @@ var DefaultPanelConfig = ShortCutPanelConfig{
 			BorderForeground(LgColor(Plt.Text())),
 	},
 	TitleStyle: TitleStyle{
-		FocusedTitle:   lipgloss.NewStyle().Bold(true).Padding(0, 1),
-		UnfocusedTitle: lipgloss.NewStyle().Padding(0, 1),
+		FocusedTitle:   lipgloss.NewStyle().Bold(true).Padding(0, 0),
+		UnfocusedTitle: lipgloss.NewStyle().Padding(0, 0),
 	},
 }
 

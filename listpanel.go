@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	tcellviews "github.com/gdamore/tcell/v2/views"
+	"github.com/mattn/go-runewidth"
 )
 
 // ListPanel can house a list of panels
@@ -90,22 +90,27 @@ func (p *ListPanel) Draw(force bool) bool {
 }
 
 func (p *ListPanel) renderTabs() {
-	tabs := make([]string, len(p.Panels))
+	s := titleOffset
 	for i, panel := range p.Panels {
 		selected := i == p.Selected
 		txt := panel.GetName()
 		if selected {
 			txt = "[" + txt + "]"
+		} else {
+			s += 1
 		}
-		tabs[i] = p.titleStyle.RenderTitle(txt, selected)
+		renderTextOnBorder(
+			p.titleStyle.RenderTitle(txt, selected),
+			renderOnTopEdge,
+			offsetFromLeftSide,
+			s,
+			p.view,
+		)
+		s += runewidth.StringWidth(txt)
+		if !selected {
+			s += 1
+		}
 	}
-	renderTextOnBorder(
-		lipgloss.JoinHorizontal(lipgloss.Top, tabs...),
-		renderOnTopEdge,
-		offsetFromLeftSide,
-		2,
-		p.view,
-	)
 }
 
 func NewListPanel(models []IPanel, layout Layout, options ...ListPanelOption) *ListPanel {
