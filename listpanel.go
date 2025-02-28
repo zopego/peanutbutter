@@ -22,6 +22,11 @@ type ListPanel struct {
 	redraw       bool
 	cmds         chan tea.Cmd
 	tabHidden    bool
+	topLevel     bool
+	panelStyle   PanelStyle
+	titleStyle   TitleStyle
+	iAmInFocus   bool
+	KeyBindings  []*KeyBinding
 }
 
 var _ IPanel = &ListPanel{}
@@ -32,6 +37,31 @@ func (p *ListPanel) SetView(view *tcellviews.ViewPort) {
 		newView := tcellviews.NewViewPort(p.view, 0, 0, -1, -1)
 		panel.SetView(newView)
 	}
+}
+
+func (p *ListPanel) renderBorder() {
+	renderBorder(
+		p.IAmInFocus(),
+		p.panelStyle,
+		p.view,
+	)
+}
+
+func (p *ListPanel) IAmInFocus() bool {
+	return p.iAmInFocus
+}
+
+func (p *ListPanel) GetView() *tcellviews.ViewPort {
+	return p.view
+}
+
+func (p *ListPanel) AddKeyBinding(kb *KeyBinding) {
+	p.KeyBindings = append(p.KeyBindings, kb)
+}
+
+func (p *ListPanel) HandleKeybindings(msg KeyMsg, onlyOverrides bool) tea.Cmd {
+	DebugPrintf("ListPanel received message from child: %T %+v\n", msg, msg)
+	return KeyBindingsHandler(p.KeyBindings, msg, onlyOverrides)
 }
 
 func (p *ListPanel) Draw(force bool) bool {
@@ -48,35 +78,110 @@ func (p *ListPanel) Draw(force bool) bool {
 			}
 		}
 	}
+
+	if redrawn || continueForce {
+		p.renderBorder()
+		if p.Layout.Orientation == ZStacked {
+			p.renderTabs()
+		}
+	}
 	p.redraw = false
 	return redrawn
 }
 
-func NewListPanel(models []IPanel, layout Layout) ListPanel {
+func (p *ListPanel) renderTabs() {
+	tabs := make([]string, len(p.Panels))
+	for i, panel := range p.Panels {
+		selected := i == p.Selected
+		txt := panel.GetName()
+		if selected {
+			txt = "[" + txt + "]"
+		}
+		tabs[i] = p.titleStyle.RenderTitle(txt, selected)
+	}
+	renderTextOnBorder(
+		lipgloss.JoinHorizontal(lipgloss.Top, tabs...),
+		renderOnTopEdge,
+		offsetFromLeftSide,
+		2,
+		p.view,
+	)
+}
+
+func NewListPanel(models []IPanel, layout Layout, options ...ListPanelOption) *ListPanel {
 	panels := make([]IPanel, len(models))
 
 	for i, model := range models {
 		panels[i] = model
 	}
 
-	return ListPanel{
-		Panels: panels,
-		Layout: layout,
+	listPanel := ListPanel{
+		Panels:     panels,
+		Layout:     layout,
+		topLevel:   false,
+		iAmInFocus: false,
+	}
+
+	if listPanel.Layout.Orientation == ZStacked {
+		listPanel.Selected = 0
+		listPanel.panelStyle = DefaultPanelConfig.PanelStyle
+	}
+
+	for _, option := range options {
+		option(&listPanel)
+	}
+
+	return &listPanel
+}
+
+type ListPanelOption func(*ListPanel)
+
+func WithTopLevel(topLevel bool) ListPanelOption {
+	return func(m *ListPanel) {
+		m.topLevel = topLevel
 	}
 }
 
-func (m *ListPanel) GetMsgForParent() tea.Msg {
-	msg := m.MsgForParent
-	m.MsgForParent = nil
-	return msg
+func WithListPanelBorderStyle(panelStyle PanelStyle) ListPanelOption {
+	return func(m *ListPanel) {
+		m.panelStyle = panelStyle
+	}
 }
 
-func (m *ListPanel) SetMsgForParent(msg tea.Msg) {
-	m.MsgForParent = msg
+func WithListPanelTitleStyle(titleStyle TitleStyle) ListPanelOption {
+	return func(m *ListPanel) {
+		m.titleStyle = titleStyle
+	}
+}
+
+func WithTabAdvanceKeyBindings(keyBindings KeyBinding) ListPanelOption {
+	newKb := keyBindings
+	return func(m *ListPanel) {
+		newKb.Func = func() tea.Cmd {
+			m.TabNext()
+			return nil
+		}
+		m.AddKeyBinding(&newKb)
+	}
+}
+
+func WithTabReverseKeyBindings(keyBindings KeyBinding) ListPanelOption {
+	newKb := keyBindings
+	return func(m *ListPanel) {
+		newKb.Func = func() tea.Cmd {
+			m.TabPrev()
+			return nil
+		}
+		m.AddKeyBinding(&newKb)
+	}
 }
 
 func (m *ListPanel) Init(cmds chan tea.Cmd) {
 	m.cmds = cmds
+	if m.topLevel {
+		m.SetPath([]int{})
+	}
+
 	DebugPrintf("ListPanel.Init() called for %v\n", m.path)
 	for _, panel := range m.Panels {
 		panel.Init(cmds)
@@ -110,53 +215,55 @@ func (m *ListPanel) GetPath() []int {
 	return m.path
 }
 
-// Type enforces
-type HasView interface {
-	View() string
-}
-
-func (m *ListPanel) ListView() string {
-	var views []string
-	for _, panel := range m.Panels {
-		if model, ok := panel.(HasView); ok {
-			views = append(views, model.View())
+func (m *ListPanel) HandleRequestMsg(msg RequestMsgType) {
+	if msg, ok := msg.Msg.(FocusRequestMsg); ok {
+		m.HandleMessage(FocusRevokeMsg{})
+		m.cmds <- func() tea.Msg {
+			return FocusGrantMsg{Relation: msg.Relation, RoutePath: &RoutePath{Path: msg.RequestedPath}}
 		}
 	}
-
-	if m.Layout.Orientation == Horizontal {
-		return lipgloss.JoinHorizontal(lipgloss.Top, views...)
-	}
-	return lipgloss.JoinVertical(lipgloss.Left, views...)
 }
 
-func (m *ListPanel) HandleZStackedMsg(msg tea.Msg) {
-	if msg, ok := msg.(ConsiderForLocalShortcutMsg); ok {
-		m.Panels[m.Selected].HandleMessage(msg)
+func (m *ListPanel) HandleMyMessage(msg Msg) tea.Cmd {
+	DebugPrintf("ListPanel %v received message to itself: %T %+v\n", m.path, msg, msg)
+	if m.Layout.Orientation != ZStacked {
+		return nil
 	}
-	if msg, ok := msg.(SelectTabIndexMsg); ok {
-		if msg.ListPanelName == m.Name {
-			m.SetSelected(msg.Index)
-			m.redraw = true
-		}
+	switch msg := msg.(type) {
+	case FocusRevokeMsg:
+		m.iAmInFocus = false
+		m.redraw = true
+	case FocusGrantMsg:
+		m.iAmInFocus = true
+		m.redraw = true
+	case KeyMsg:
+		return m.HandleKeybindings(msg, false)
 	}
+	return nil
 }
 
 func (m *ListPanel) HandleMessage(msg Msg) {
 	p := GetMessageHandlingType(msg)
 	DebugPrintf("ListPanel %v received message: %T %+v %T\n", m.path, msg, msg, p)
 
-	if m.Layout.Orientation == ZStacked {
-		m.HandleZStackedMsg(msg)
-	}
-
 	switch msg := p.(type) {
+	case RequestMsgType:
+		if m.topLevel {
+			m.HandleRequestMsg(msg)
+			return
+		}
+
 	case ResizeMsg:
 		m.HandleSizeMsg(msg)
 
 	case FocusPropagatedMsgType:
-		for _, panel := range m.Panels {
-			if panel.IsFocused() {
-				panel.HandleMessage(msg.Msg)
+		if m.iAmInFocus {
+			m.cmds <- m.HandleMyMessage(msg.Msg)
+		} else {
+			for _, panel := range m.Panels {
+				if panel.IsFocused() {
+					panel.HandleMessage(msg.Msg)
+				}
 			}
 		}
 
@@ -165,8 +272,8 @@ func (m *ListPanel) HandleMessage(msg Msg) {
 		r_path := msg.GetRoutePath().Path
 		l_msgpath := len(r_path)
 		if l_mypath == l_msgpath {
-			// This message is destined for this listpanel
-			// return m.HandleRoutedMessage(msg.Msg)
+			m.HandleMyMessage(msg.Msg)
+			return
 		} else {
 			nextIdx := r_path[l_mypath]
 			if nextIdx < 0 || nextIdx > len(m.Panels) {
@@ -176,6 +283,7 @@ func (m *ListPanel) HandleMessage(msg Msg) {
 		}
 
 	case BroadcastMsgType:
+		m.HandleMyMessage(msg.Msg)
 		for _, panel := range m.Panels {
 			//DebugPrintf("ListPanel %v broadcasting message to child %v\n", m.path, i)
 			//DebugPrintf("panel: %T\n", panel)
@@ -222,21 +330,13 @@ func (m ListPanel) GetLayout() Layout {
 	return m.Layout
 }
 
-func (m *ListPanel) GetLeafPanelCenters() []PanelCenter {
-	centers := []PanelCenter{}
-	for _, panel := range m.Panels {
-		centers = append(centers, panel.GetLeafPanelCenters()...)
-	}
-	return centers
-}
-
-func (m *ListPanel) HandleZStackedSizeMsg(msg ResizeMsg) {
+func (m *ListPanel) HandleZStackedSizeMsg(x int, y int, width int, height int) {
 	for _, panel := range m.Panels {
 		newMsg := ResizeMsg{
-			X:      0,
-			Y:      0,
-			Width:  msg.Width,
-			Height: msg.Height,
+			X:      x,
+			Y:      y,
+			Width:  width,
+			Height: height,
 		}
 		panel.HandleMessage(newMsg)
 	}
@@ -244,14 +344,6 @@ func (m *ListPanel) HandleZStackedSizeMsg(msg ResizeMsg) {
 
 func (m *ListPanel) HandleSizeMsg(msg ResizeMsg) {
 	DebugPrintf("ListPanel %v received size message: %+v\n", m.path, msg)
-	if m.view != nil {
-		m.view.Resize(msg.X, msg.Y, msg.Width, msg.Height)
-	}
-
-	if m.Layout.Orientation == ZStacked {
-		m.HandleZStackedSizeMsg(msg)
-		return
-	}
 
 	width := msg.Width
 	height := msg.Height
@@ -262,36 +354,54 @@ func (m *ListPanel) HandleSizeMsg(msg ResizeMsg) {
 		height = m.Layout.Height
 	}
 
-	if m.Layout.Orientation == Horizontal {
-		widths := m.Layout.CalculateDims(width)
-		X := 0
-		for i, panel := range m.Panels {
-			w := widths[i]
-			h := height
-			newMsg := ResizeMsg{
-				X:      X,
-				Y:      0,
-				Width:  w,
-				Height: h,
-			}
-			X += w
-			panel.HandleMessage(newMsg)
+	DebugPrintf("ListPanel x y w h %v %v %v %v\n", msg.X, msg.Y, width, height)
+	SetSize(&m.panelStyle, m.view, msg.X, msg.Y, width, height)
+
+	start_x, start_y, horz, vert := GetStylingMargins(&m.panelStyle)
+	DebugPrintf("ListPanel start_x start_y horz vert %v %v %v %v\n", start_x, start_y, horz, vert)
+
+	switch m.Layout.Orientation {
+	case ZStacked:
+		m.HandleZStackedSizeMsg(start_x, start_y, width-horz, height-vert)
+		return
+	case Horizontal:
+		m.HandleHorzSizeMsg(start_x, start_y, width-horz, height-vert)
+		return
+	case Vertical:
+		m.HandleVertSizeMsg(start_x, start_y, width-horz, height-vert)
+		return
+	}
+}
+
+func (m *ListPanel) HandleHorzSizeMsg(X int, Y int, width int, height int) {
+	widths := m.Layout.CalculateDims(width)
+	for i, panel := range m.Panels {
+		w := widths[i]
+		h := height
+		newMsg := ResizeMsg{
+			X:      X,
+			Y:      Y,
+			Width:  w,
+			Height: h,
 		}
-	} else {
-		heights := m.Layout.CalculateDims(height)
-		Y := 0
-		for i, panel := range m.Panels {
-			w := width
-			h := heights[i]
-			newMsg := ResizeMsg{
-				X:      0,
-				Y:      Y,
-				Width:  w,
-				Height: h,
-			}
-			Y += h
-			panel.HandleMessage(newMsg)
+		X += w
+		panel.HandleMessage(newMsg)
+	}
+}
+
+func (m *ListPanel) HandleVertSizeMsg(X int, Y int, width int, height int) {
+	heights := m.Layout.CalculateDims(height)
+	for i, panel := range m.Panels {
+		w := width
+		h := heights[i]
+		newMsg := ResizeMsg{
+			X:      X,
+			Y:      Y,
+			Width:  w,
+			Height: h,
 		}
+		Y += h
+		panel.HandleMessage(newMsg)
 	}
 }
 

@@ -147,7 +147,7 @@ func GetMessageHandlingType(msg Msg) Msg {
 	originalMsg := msg
 	switch msg := msg.(type) {
 	case FocusGrantMsg:
-		return GetHandlingForMessageWithRoutePath(msg)(originalMsg)
+		return RoutedMsgType{Msg: msg, RoutePath: msg.RoutePath}
 	case FocusRevokeMsg:
 		return BroadcastMsgType{Msg: msg}
 	case FocusRequestMsg:

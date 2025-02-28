@@ -55,8 +55,8 @@ type IPanel interface {
 	SetView(view *tcellviews.ViewPort)
 	Draw(force bool) bool
 	Init(cmds chan tea.Cmd)
-	GetLeafPanelCenters() []PanelCenter
 	GetName() string
 	SetTabHidden(hidden bool)
 	IsInHiddenTab() bool
+	AddKeyBinding(kb *KeyBinding)
 }

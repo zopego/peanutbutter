@@ -2,41 +2,19 @@ package peanutbutter
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	tcellviews "github.com/gdamore/tcell/v2/views"
-	"github.com/mattn/go-runewidth"
 )
 
 const (
 	titleOffset = 2
 )
 
-type PanelStyle struct {
-	FocusedBorder   lipgloss.Style
-	UnfocusedBorder lipgloss.Style
-}
-
 type ShortCutPanelConfig struct {
 	ContextualHelp string
 	Title          string
-	FocusedTitle   lipgloss.Style
-	UnfocusedTitle lipgloss.Style
-	PanelStyle
-	KeyBindings []KeyBinding
-}
-
-var DefaultPanelConfig = ShortCutPanelConfig{
-	PanelStyle: PanelStyle{
-		FocusedBorder: lipgloss.NewStyle().
-			Border(lipgloss.NormalBorder()).
-			BorderForeground(LgColor(Plt.Lavender())),
-
-		UnfocusedBorder: lipgloss.NewStyle().
-			Border(lipgloss.NormalBorder()).
-			BorderForeground(LgColor(Plt.Text())),
-	},
-	FocusedTitle:   lipgloss.NewStyle().Bold(true).Padding(0, 1),
-	UnfocusedTitle: lipgloss.NewStyle().Padding(0, 1),
+	TitleStyle     TitleStyle
+	PanelStyle     PanelStyle
+	KeyBindings    []*KeyBinding
 }
 
 // ShortCutPanel is an extension of Panel that can handle
@@ -49,6 +27,7 @@ var DefaultPanelConfig = ShortCutPanelConfig{
 // When focused, it sends a ContextualHelpTextMsg to the parent
 // to set ContextualHelp. The parent can decide to display it
 // or not
+
 type ShortCutPanel struct {
 	ShortCutPanelConfig
 	redraw             bool
@@ -77,21 +56,15 @@ func WithTitle(title string) ShortCutPanelOption {
 	}
 }
 
-func WithFocusedTitleStyle(style lipgloss.Style) ShortCutPanelOption {
-	return func(config *ShortCutPanel) {
-		config.FocusedTitle = style
-	}
-}
-
-func WithUnfocusedTitleStyle(style lipgloss.Style) ShortCutPanelOption {
-	return func(config *ShortCutPanel) {
-		config.UnfocusedTitle = style
-	}
-}
-
-func WithPanelStyle(style PanelStyle) ShortCutPanelOption {
+func WithShortCutPanelStyle(style PanelStyle) ShortCutPanelOption {
 	return func(config *ShortCutPanel) {
 		config.PanelStyle = style
+	}
+}
+
+func WithShortCutPanelTitleStyle(style TitleStyle) ShortCutPanelOption {
+	return func(config *ShortCutPanel) {
+		config.TitleStyle = style
 	}
 }
 
@@ -107,7 +80,7 @@ func WithName(name string) ShortCutPanelOption {
 	}
 }
 
-func WithKeyBindingMaker(keyBindingMaker func(*ShortCutPanel) KeyBinding) ShortCutPanelOption {
+func WithKeyBindingMaker(keyBindingMaker func(*ShortCutPanel) *KeyBinding) ShortCutPanelOption {
 	return func(panel *ShortCutPanel) {
 		panel.KeyBindings = append(panel.KeyBindings, keyBindingMaker(panel))
 	}
@@ -131,7 +104,7 @@ func (p *ShortCutPanel) IsFocused() bool {
 	return p.focus
 }
 
-func (p *ShortCutPanel) AddKeyBinding(kb KeyBinding) {
+func (p *ShortCutPanel) AddKeyBinding(kb *KeyBinding) {
 	p.KeyBindings = append(p.KeyBindings, kb)
 }
 
@@ -177,43 +150,22 @@ func (p *ShortCutPanel) drawModelWithView(m ILeafModelWithView, force bool) bool
 	return true
 }
 
-func (p *ShortCutPanel) renderBorder() {
-	borderStyle := p.PanelStyle.UnfocusedBorder
-	if p.IsFocused() {
-		borderStyle = p.PanelStyle.FocusedBorder
-	}
-	str := borderStyle.Render(
-		lipgloss.JoinVertical(lipgloss.Top, ""),
-	)
-	TcellDrawHelper(str, p.view, []*tcellviews.ViewPort{p.modelView})
-}
-
 func (p *ShortCutPanel) renderTitle() {
-	titleStyle := p.UnfocusedTitle
-	if p.IsFocused() {
-		titleStyle = p.FocusedTitle
-	}
-	t := titleStyle.Render(p.Title)
-	p.renderTextOnBorder(t, true, true, titleOffset)
+	renderTextOnBorder(
+		p.TitleStyle.RenderTitle(p.Title, p.IsFocused()),
+		renderOnTopEdge,
+		offsetFromLeftSide,
+		titleOffset,
+		p.view,
+	)
 }
 
-func (p *ShortCutPanel) renderTextOnBorder(text string, topOrBottom bool, leftOrRight bool, offset int) {
-	numCells := runewidth.StringWidth(text)
-	X, Y := p.view.Size()
-	y := 0
-	if !topOrBottom {
-		y = Y - 1
-	}
-	x := offset
-	if !leftOrRight {
-		x = X - numCells - offset
-		if x < 0 {
-			x = 0
-		}
-	}
-
-	miniView := tcellviews.NewViewPort(p.view, x, y, numCells, 1)
-	TcellDrawHelper(text, miniView, []*tcellviews.ViewPort{})
+func (p *ShortCutPanel) renderBorder() {
+	renderBorder(
+		p.IsFocused(),
+		p.PanelStyle,
+		p.view,
+	)
 }
 
 func (p *ShortCutPanel) Draw(force bool) bool {
@@ -228,8 +180,6 @@ func (p *ShortCutPanel) Draw(force bool) bool {
 		modelOk = true
 	}
 	if childRedraw || p.redraw || force {
-		//str := p.borderView()
-		//TcellDrawHelper(str, p.view, []*tcellviews.ViewPort{p.modelView})
 		p.renderBorder()
 		p.renderTitle()
 		p.redraw = false
@@ -267,22 +217,9 @@ func (p *ShortCutPanel) FocusRequestCmd(direction Relation) tea.Cmd {
 	}
 }
 
-func (p *ShortCutPanel) HandleMessageFromChild(msg Msg, onlyOverrides bool) tea.Cmd {
+func (p *ShortCutPanel) HandleKeybindings(msg KeyMsg, onlyOverrides bool) tea.Cmd {
 	DebugPrintf("ShortCutPanel received message from child: %T %+v\n", msg, msg)
-	if msg, ok := msg.(KeyMsg); ok {
-		for _, keyBinding := range p.KeyBindings {
-			isValid := (onlyOverrides && keyBinding.Override) || !onlyOverrides
-			if keyBinding.IsMatch(msg.EventKey) && isValid {
-				if keyBinding.Enabled {
-					if keyBinding.Func != nil {
-						return keyBinding.Func()
-					}
-				}
-			}
-		}
-		msg.SetUnused()
-	}
-	return nil
+	return KeyBindingsHandler(p.KeyBindings, msg, onlyOverrides)
 }
 
 func (p *ShortCutPanel) HandleMessage(msg Msg) {
@@ -304,7 +241,7 @@ func (p *ShortCutPanel) HandleMessage(msg Msg) {
 	default:
 		cmds := []tea.Cmd{}
 		if keyMsg, ok := msg.(KeyMsg); ok {
-			cmds = append(cmds, p.HandleMessageFromChild(keyMsg, true))
+			cmds = append(cmds, p.HandleKeybindings(keyMsg, true))
 			if keyMsg.IsUsed() {
 				p.cmds <- tea.Batch(cmds...)
 				return
@@ -313,7 +250,7 @@ func (p *ShortCutPanel) HandleMessage(msg Msg) {
 		cmds = append(cmds, p.Model.Update(msg))
 		if keyMsg, ok := msg.(KeyMsg); ok {
 			if !keyMsg.IsUsed() {
-				cmds = append(cmds, p.HandleMessageFromChild(keyMsg, false))
+				cmds = append(cmds, p.HandleKeybindings(keyMsg, false))
 			}
 		}
 		p.cmds <- tea.Batch(cmds...)
@@ -323,47 +260,26 @@ func (p *ShortCutPanel) HandleMessage(msg Msg) {
 	}
 }
 
-func GetStylingSize(s lipgloss.Style) (int, int, int, int) {
-
-	horz_left := s.GetBorderLeftSize() + s.GetMarginLeft() + s.GetPaddingLeft()
-	vert_top := s.GetBorderTopSize() + s.GetMarginTop() + s.GetPaddingTop()
-
-	horz_total := s.GetHorizontalMargins() + s.GetHorizontalPadding() + s.GetHorizontalBorderSize()
-	vert_total := s.GetVerticalMargins() + s.GetVerticalPadding() + s.GetVerticalBorderSize()
-	return horz_left, vert_top, horz_total, vert_total
-}
-
 func (p *ShortCutPanel) HandleSizeMsg(msg ResizeMsg) tea.Cmd {
 	DebugPrintf("ShortCutPanel received size message: %+v\n", msg)
 	p.redraw = true
-	if p.view != nil {
-		p.view.Resize(msg.X, msg.Y, msg.Width, msg.Height)
-	}
+	SetSize(&p.PanelStyle, p.view, msg.X, msg.Y, msg.Width, msg.Height)
 
-	start_x, start_y, horz, vert := GetStylingSize(p.PanelStyle.UnfocusedBorder)
+	start_x, start_y, horz, vert := GetStylingMargins(&p.PanelStyle)
+	DebugPrintf("ShortCutPanel start_x start_y horz vert %v %v %v %v\n", start_x, start_y, horz, vert)
 	width := msg.Width - horz
 	height := msg.Height - vert
-	//p.TitleStyle = p.TitleStyle.Width(width)
 	p.modelView.Resize(start_x, start_y, width, height)
-	cmd := p.Model.Update(ResizeMsg{EventResize: msg.EventResize, X: msg.X, Y: msg.Y, Width: width, Height: height})
-
-	h, w := msg.Height-2, msg.Width-2
-	p.PanelStyle.UnfocusedBorder = p.PanelStyle.UnfocusedBorder.Width(w)
-	p.PanelStyle.FocusedBorder = p.PanelStyle.FocusedBorder.Width(w)
-	p.PanelStyle.UnfocusedBorder = p.PanelStyle.UnfocusedBorder.Height(h)
-	p.PanelStyle.FocusedBorder = p.PanelStyle.FocusedBorder.Height(h)
+	cmd := p.Model.Update(ResizeMsg{EventResize: msg.EventResize, X: start_x, Y: start_y, Width: width, Height: height})
 	return cmd
-}
-
-func (p *ShortCutPanel) GetLeafPanelCenters() []PanelCenter {
-	x, y, X, Y := p.view.GetPhysical()
-	return []PanelCenter{
-		{X: x + (X / 2), Y: y + (Y / 2), Path: p.GetPath()},
-	}
 }
 
 func (p *ShortCutPanel) IsInHiddenTab() bool {
 	return p.tabHidden
+}
+
+func (p *ShortCutPanel) GetView() *tcellviews.ViewPort {
+	return p.view
 }
 
 func (p *ShortCutPanel) SetTabHidden(hidden bool) {

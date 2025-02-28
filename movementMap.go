@@ -7,22 +7,24 @@ import (
 type IMovementNode interface {
 	IsListOfPanels() bool
 	IsSelector() bool
-	Next(*ShortCutPanel) *ShortCutPanel
-	Previous(*ShortCutPanel) *ShortCutPanel
-	CreateKeyBindings(IMovementNode, *KeyBinding, *KeyBinding)
-	contains(*ShortCutPanel) bool
-	allPanels() []*ShortCutPanel
-	First() *ShortCutPanel
-	Last() *ShortCutPanel
+	Next(IPanel) IPanel
+	Previous(IPanel) IPanel
+	CreateKeyBindings(IMovementNode, KeyBinding, KeyBinding)
+	contains(IPanel) bool
+	allPanels() []IPanel
+	First() IPanel
+	Last() IPanel
 }
 
 type PanelSequence struct {
-	panelList     []*ShortCutPanel
-	panelPosition map[*ShortCutPanel]int
+	panelList     []IPanel
+	panelPosition map[IPanel]int
 }
 
-func NewPanelSequence(panels ...*ShortCutPanel) *PanelSequence {
-	panelPosition := make(map[*ShortCutPanel]int)
+var _ IMovementNode = &PanelSequence{}
+
+func NewPanelSequence(panels ...IPanel) *PanelSequence {
+	panelPosition := make(map[IPanel]int)
 	for i := 0; i < len(panels); i++ {
 		panelPosition[panels[i]] = i
 	}
@@ -43,19 +45,20 @@ func (m *PanelSequence) IsSelector() bool {
 // Panel list can only create keybindings to go back and forth
 // between the panels in the list
 // It will leave out the entry/exit keybindings
-func (m *PanelSequence) CreateKeyBindings(root IMovementNode, kb *KeyBinding, rev_kb *KeyBinding) {
+func (m *PanelSequence) CreateKeyBindings(root IMovementNode, kb KeyBinding, rev_kb KeyBinding) {
 	for _, panel := range m.panelList {
-		if kb != nil {
+		if len(kb.KeyDefs) > 0 {
 			m.keybindingHelper(panel, kb, root.Next)
 		}
-		if rev_kb != nil {
+		if len(rev_kb.KeyDefs) > 0 {
 			m.keybindingHelper(panel, rev_kb, root.Previous)
 		}
 	}
 }
 
-func (m *PanelSequence) keybindingHelper(panel *ShortCutPanel, kb *KeyBinding, fn func(*ShortCutPanel) *ShortCutPanel) {
-	kb.Func = func() tea.Cmd {
+func (m *PanelSequence) keybindingHelper(panel IPanel, kb KeyBinding, fn func(IPanel) IPanel) {
+	newKb := kb
+	newKb.Func = func() tea.Cmd {
 		next := fn(panel)
 		if next == nil {
 			return nil
@@ -67,15 +70,15 @@ func (m *PanelSequence) keybindingHelper(panel *ShortCutPanel, kb *KeyBinding, f
 			}
 		}
 	}
-	panel.AddKeyBinding(*kb)
+	panel.AddKeyBinding(&newKb)
 }
 
-func (m *PanelSequence) contains(panel *ShortCutPanel) bool {
+func (m *PanelSequence) contains(panel IPanel) bool {
 	_, ok := m.panelPosition[panel]
 	return ok
 }
 
-func (m *PanelSequence) Next(panel *ShortCutPanel) *ShortCutPanel {
+func (m *PanelSequence) Next(panel IPanel) IPanel {
 	index := m.panelPosition[panel]
 	if index == len(m.panelList)-1 {
 		return nil
@@ -83,7 +86,7 @@ func (m *PanelSequence) Next(panel *ShortCutPanel) *ShortCutPanel {
 	return m.panelList[index+1]
 }
 
-func (m *PanelSequence) Previous(panel *ShortCutPanel) *ShortCutPanel {
+func (m *PanelSequence) Previous(panel IPanel) IPanel {
 	index := m.panelPosition[panel]
 	if index == 0 {
 		return nil
@@ -91,26 +94,28 @@ func (m *PanelSequence) Previous(panel *ShortCutPanel) *ShortCutPanel {
 	return m.panelList[index-1]
 }
 
-func (m *PanelSequence) First() *ShortCutPanel {
+func (m *PanelSequence) First() IPanel {
 	return m.panelList[0]
 }
 
-func (m *PanelSequence) Last() *ShortCutPanel {
+func (m *PanelSequence) Last() IPanel {
 	return m.panelList[len(m.panelList)-1]
 }
 
-func (m *PanelSequence) allPanels() []*ShortCutPanel {
+func (m *PanelSequence) allPanels() []IPanel {
 	return m.panelList
 }
 
 type SelectorNode struct {
 	chains        []IMovementNode
-	chainMap      map[*ShortCutPanel]IMovementNode
-	chainPosition map[*ShortCutPanel]int
-	selectionFunc func([]*ShortCutPanel) *ShortCutPanel
+	chainMap      map[IPanel]IMovementNode
+	chainPosition map[IPanel]int
+	selectionFunc func([]IPanel) IPanel
 	loopAround    bool
 	sequential    bool
 }
+
+var _ IMovementNode = &SelectorNode{}
 
 func NewLoopAroundTabMap(chains ...IMovementNode) *SelectorNode {
 	k := NewVisibleSelectorNode(chains...)
@@ -120,8 +125,8 @@ func NewLoopAroundTabMap(chains ...IMovementNode) *SelectorNode {
 }
 
 func NewVisibleSelectorNode(chains ...IMovementNode) *SelectorNode {
-	chainMap := make(map[*ShortCutPanel]IMovementNode)
-	chainPosition := make(map[*ShortCutPanel]int)
+	chainMap := make(map[IPanel]IMovementNode)
+	chainPosition := make(map[IPanel]int)
 	for i := 0; i < len(chains); i++ {
 		for _, panel := range chains[i].allPanels() {
 			chainMap[panel] = chains[i]
@@ -146,7 +151,7 @@ func (m *SelectorNode) IsSelector() bool {
 	return true
 }
 
-func (m *SelectorNode) CreateKeyBindings(root IMovementNode, kb *KeyBinding, rev_kb *KeyBinding) {
+func (m *SelectorNode) CreateKeyBindings(root IMovementNode, kb KeyBinding, rev_kb KeyBinding) {
 	if root == nil {
 		root = m
 	}
@@ -155,7 +160,7 @@ func (m *SelectorNode) CreateKeyBindings(root IMovementNode, kb *KeyBinding, rev
 	}
 }
 
-func (m *SelectorNode) Next(panel *ShortCutPanel) *ShortCutPanel {
+func (m *SelectorNode) Next(panel IPanel) IPanel {
 	chain := m.chainMap[panel]
 	chainIndex := m.chainPosition[panel]
 	next := chain.Next(panel)
@@ -177,7 +182,7 @@ func (m *SelectorNode) Next(panel *ShortCutPanel) *ShortCutPanel {
 	return next
 }
 
-func (m *SelectorNode) Previous(panel *ShortCutPanel) *ShortCutPanel {
+func (m *SelectorNode) Previous(panel IPanel) IPanel {
 	chain := m.chainMap[panel]
 	chainIndex := m.chainPosition[panel]
 	previous := chain.Previous(panel)
@@ -199,8 +204,8 @@ func (m *SelectorNode) Previous(panel *ShortCutPanel) *ShortCutPanel {
 	return previous
 }
 
-func (m *SelectorNode) First() *ShortCutPanel {
-	firstOptions := make([]*ShortCutPanel, 0)
+func (m *SelectorNode) First() IPanel {
+	firstOptions := make([]IPanel, 0)
 	if m.sequential {
 		return m.chains[0].First()
 	} else {
@@ -211,8 +216,8 @@ func (m *SelectorNode) First() *ShortCutPanel {
 	}
 }
 
-func (m *SelectorNode) Last() *ShortCutPanel {
-	lastOptions := make([]*ShortCutPanel, 0)
+func (m *SelectorNode) Last() IPanel {
+	lastOptions := make([]IPanel, 0)
 	if m.sequential {
 		return m.chains[len(m.chains)-1].Last()
 	} else {
@@ -223,20 +228,20 @@ func (m *SelectorNode) Last() *ShortCutPanel {
 	}
 }
 
-func (m *SelectorNode) contains(panel *ShortCutPanel) bool {
+func (m *SelectorNode) contains(panel IPanel) bool {
 	_, ok := m.chainMap[panel]
 	return ok
 }
 
-func (m *SelectorNode) allPanels() []*ShortCutPanel {
-	allPanels := make([]*ShortCutPanel, 0)
+func (m *SelectorNode) allPanels() []IPanel {
+	allPanels := make([]IPanel, 0)
 	for _, chain := range m.chains {
 		allPanels = append(allPanels, chain.allPanels()...)
 	}
 	return allPanels
 }
 
-func visiblePaneSelectionLogic(panels []*ShortCutPanel) *ShortCutPanel {
+func visiblePaneSelectionLogic(panels []IPanel) IPanel {
 	for _, panel := range panels {
 		if !panel.IsInHiddenTab() {
 			return panel

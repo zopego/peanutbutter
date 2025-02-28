@@ -113,3 +113,20 @@ func (keybinding *KeyBinding) IsMatch(eventKey *tcell.EventKey) bool {
 	}
 	return false
 }
+
+func KeyBindingsHandler(keyBindings []*KeyBinding, msg KeyMsg, onlyOverrides bool) tea.Cmd {
+	DebugPrintf("KeyBindingsHandler received message from child: %T %+v\n", msg, msg)
+	for _, keyBinding := range keyBindings {
+		isValid := (onlyOverrides && keyBinding.Override) || !onlyOverrides
+		if keyBinding.IsMatch(msg.EventKey) && isValid {
+			if keyBinding.Enabled {
+				if keyBinding.Func != nil {
+					cmd := keyBinding.Func()
+					return cmd
+				}
+			}
+		}
+	}
+	msg.SetUnused()
+	return nil
+}
