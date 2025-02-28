@@ -142,6 +142,12 @@ func WithTopLevel(topLevel bool) ListPanelOption {
 	}
 }
 
+func WithListPanelName(name string) ListPanelOption {
+	return func(m *ListPanel) {
+		m.Name = name
+	}
+}
+
 func WithListPanelBorderStyle(panelStyle PanelStyle) ListPanelOption {
 	return func(m *ListPanel) {
 		m.panelStyle = panelStyle
