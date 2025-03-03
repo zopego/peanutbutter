@@ -19,7 +19,7 @@ func MakeAutoRoutedCmd(cmd tea.Cmd, path []int) tea.Cmd {
 			msg := cmd()
 			switch msg := GetMessageHandlingType(msg).(type) {
 			case UntypedMsgType:
-				return AutoRoutedMsg{Msg: msg.Msg, RoutePath: &RoutePath{Path: path}}
+				return AutoRoutedMsg{Msg: msg.Msg, RoutePath: RoutePath{Path: path}}
 			}
 			return msg
 		}

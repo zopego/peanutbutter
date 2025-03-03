@@ -41,7 +41,7 @@ func (t *pbRunModel) update(ev tcell.Event) {
 		}
 
 	case *tcell.EventKey:
-		unused := false
+		unused := true
 		kmsg := KeyMsg{EventKey: ev, Unused: &unused}
 		t.model.Update(kmsg)
 		if t.model.Draw() {

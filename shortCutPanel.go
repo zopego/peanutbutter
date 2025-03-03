@@ -246,6 +246,7 @@ func (p *ShortCutPanel) HandleMessage(msg Msg) {
 				p.cmds <- tea.Batch(cmds...)
 				return
 			}
+			keyMsg.SetUsed()
 		}
 		cmds = append(cmds, p.Model.Update(msg))
 		if keyMsg, ok := msg.(KeyMsg); ok {

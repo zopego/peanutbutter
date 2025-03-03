@@ -41,7 +41,7 @@ type FocusPropagatedMsgType struct {
 
 type RoutedMsgType struct {
 	Msg Msg
-	*RoutePath
+	RoutePath
 }
 
 type BroadcastMsgType struct {
@@ -73,7 +73,7 @@ func (routedPath *RoutePath) GetRoutePath() *RoutePath {
 }
 
 type FocusGrantMsg struct {
-	*RoutePath
+	RoutePath
 	Relation Relation
 }
 
@@ -84,12 +84,24 @@ type KeyMsg struct {
 	Unused *bool
 }
 
+// IsUsed returns true if the keyMsg has not been used
+// We make the assumption that before a keyMsg is given to a
+// IModel it is used up, making it unavailable for subsequent key
+// bindings to match.
+// However, it is up to the IModel to set the keyMsg to be unused
+// allowing it to have control over the keyMsg's lifecycle.
 func (keyMsg *KeyMsg) IsUsed() bool {
 	return !*keyMsg.Unused
 }
 
+// SetUnused sets the keyMsg to unused
 func (keyMsg *KeyMsg) SetUnused() {
 	*keyMsg.Unused = true
+}
+
+// SetUsed sets the keyMsg to used
+func (keyMsg *KeyMsg) SetUsed() {
+	*keyMsg.Unused = false
 }
 
 func (keyMsg *KeyMsg) Matches(keyDef KeyDef) bool {
@@ -107,7 +119,7 @@ type ConsiderForGlobalShortcutMsg struct {
 
 type AutoRoutedMsg struct {
 	Msg
-	*RoutePath
+	RoutePath
 }
 
 type BroadcastMsg struct {
@@ -125,9 +137,10 @@ type SelectTabIndexMsg struct {
 }
 
 type IMessageWithRoutePath interface {
-	GetRoutePath() *RoutePath
+	GetRoutePath() RoutePath
 }
 
+/*
 func GetHandlingForMessageWithRoutePath(msg IMessageWithRoutePath) func(msg Msg) Msg {
 	routePath := msg.GetRoutePath()
 
@@ -142,9 +155,9 @@ func GetHandlingForMessageWithRoutePath(msg IMessageWithRoutePath) func(msg Msg)
 	}
 
 }
+*/
 
 func GetMessageHandlingType(msg Msg) Msg {
-	originalMsg := msg
 	switch msg := msg.(type) {
 	case FocusGrantMsg:
 		return RoutedMsgType{Msg: msg, RoutePath: msg.RoutePath}
@@ -154,12 +167,8 @@ func GetMessageHandlingType(msg Msg) Msg {
 		return RequestMsgType{Msg: msg}
 	case ContextualHelpTextMsg:
 		return RequestMsgType{Msg: msg}
-	case ConsiderForLocalShortcutMsg:
-		return GetHandlingForMessageWithRoutePath(msg)(originalMsg)
-	case ConsiderForGlobalShortcutMsg:
-		return BroadcastMsgType{Msg: msg}
 	case AutoRoutedMsg:
-		return GetHandlingForMessageWithRoutePath(msg)(originalMsg)
+		return RoutedMsgType{Msg: msg, RoutePath: msg.RoutePath}
 	case KeyMsg:
 		return FocusPropagatedMsgType{Msg: msg}
 	case ResizeMsg:
