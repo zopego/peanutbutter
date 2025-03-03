@@ -9,7 +9,7 @@ type IMovementNode interface {
 	IsSelector() bool
 	Next(IPanel) IPanel
 	Previous(IPanel) IPanel
-	CreateKeyBindings(IMovementNode, KeyBinding, KeyBinding)
+	CreateKeyBindings(IMovementNode, func(IPanel) KeyBinding, func(IPanel) KeyBinding)
 	contains(IPanel) bool
 	allPanels() []IPanel
 	First() IPanel
@@ -45,13 +45,13 @@ func (m *PanelSequence) IsSelector() bool {
 // Panel list can only create keybindings to go back and forth
 // between the panels in the list
 // It will leave out the entry/exit keybindings
-func (m *PanelSequence) CreateKeyBindings(root IMovementNode, kb KeyBinding, rev_kb KeyBinding) {
+func (m *PanelSequence) CreateKeyBindings(root IMovementNode, kb func(IPanel) KeyBinding, rev_kb func(IPanel) KeyBinding) {
 	for _, panel := range m.panelList {
-		if len(kb.KeyDefs) > 0 {
-			m.keybindingHelper(panel, kb, root.Next)
+		if len(kb(panel).KeyDefs) > 0 {
+			m.keybindingHelper(panel, kb(panel), root.Next)
 		}
-		if len(rev_kb.KeyDefs) > 0 {
-			m.keybindingHelper(panel, rev_kb, root.Previous)
+		if len(rev_kb(panel).KeyDefs) > 0 {
+			m.keybindingHelper(panel, rev_kb(panel), root.Previous)
 		}
 	}
 }
@@ -151,7 +151,7 @@ func (m *SelectorNode) IsSelector() bool {
 	return true
 }
 
-func (m *SelectorNode) CreateKeyBindings(root IMovementNode, kb KeyBinding, rev_kb KeyBinding) {
+func (m *SelectorNode) CreateKeyBindings(root IMovementNode, kb func(IPanel) KeyBinding, rev_kb func(IPanel) KeyBinding) {
 	if root == nil {
 		root = m
 	}
