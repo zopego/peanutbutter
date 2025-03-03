@@ -68,6 +68,10 @@ func (p *ListPanel) Draw(force bool) bool {
 	redrawn := false
 	DebugPrintf("ListPanel.Draw() called for %v. Redraw: %v, force: %v\n", p.path, p.redraw, force)
 	continueForce := p.redraw || force
+	if continueForce {
+		p.view.Clear()
+	}
+
 	if p.Layout.Orientation == ZStacked {
 		redrawn = p.Panels[p.Selected].Draw(continueForce)
 	} else {
@@ -230,25 +234,25 @@ func (m *ListPanel) HandleRequestMsg(msg RequestMsgType) {
 	if msg, ok := msg.Msg.(FocusRequestMsg); ok {
 		m.HandleMessage(FocusRevokeMsg{})
 		m.cmds <- func() tea.Msg {
-			return FocusGrantMsg{Relation: msg.Relation, RoutePath: &RoutePath{Path: msg.RequestedPath}}
+			return FocusGrantMsg{Relation: msg.Relation, RoutePath: RoutePath{Path: msg.RequestedPath}}
 		}
 	}
 }
 
-func (m *ListPanel) HandleMyMessage(msg Msg) tea.Cmd {
+func (m *ListPanel) HandleMyOwnFocus(msg Msg) tea.Cmd {
 	DebugPrintf("ListPanel %v received message to itself: %T %+v\n", m.path, msg, msg)
 	if m.Layout.Orientation != ZStacked {
 		return nil
 	}
-	switch msg := msg.(type) {
+	switch msg.(type) {
 	case FocusRevokeMsg:
 		m.iAmInFocus = false
 		m.redraw = true
+		return nil
 	case FocusGrantMsg:
 		m.iAmInFocus = true
 		m.redraw = true
-	case KeyMsg:
-		return m.HandleKeybindings(msg, false)
+		return nil
 	}
 	return nil
 }
@@ -268,9 +272,25 @@ func (m *ListPanel) HandleMessage(msg Msg) {
 		m.HandleSizeMsg(msg)
 
 	case FocusPropagatedMsgType:
-		if m.iAmInFocus {
-			m.cmds <- m.HandleMyMessage(msg.Msg)
+		if keyMsg, ok := msg.Msg.(KeyMsg); ok {
+			if m.iAmInFocus {
+				cmds := m.HandleKeybindings(keyMsg, false)
+				m.cmds <- cmds
+			} else {
+				m.cmds <- m.HandleKeybindings(keyMsg, true)
+				if !keyMsg.IsUsed() {
+					for _, panel := range m.Panels {
+						if panel.IsFocused() {
+							panel.HandleMessage(msg.Msg)
+						}
+					}
+				}
+				if !keyMsg.IsUsed() {
+					m.cmds <- m.HandleKeybindings(keyMsg, false)
+				}
+			}
 		} else {
+			m.HandleMyOwnFocus(msg.Msg)
 			for _, panel := range m.Panels {
 				if panel.IsFocused() {
 					panel.HandleMessage(msg.Msg)
@@ -283,7 +303,7 @@ func (m *ListPanel) HandleMessage(msg Msg) {
 		r_path := msg.GetRoutePath().Path
 		l_msgpath := len(r_path)
 		if l_mypath == l_msgpath {
-			m.HandleMyMessage(msg.Msg)
+			m.HandleMyOwnFocus(msg.Msg)
 			return
 		} else {
 			nextIdx := r_path[l_mypath]
@@ -294,7 +314,7 @@ func (m *ListPanel) HandleMessage(msg Msg) {
 		}
 
 	case BroadcastMsgType:
-		m.HandleMyMessage(msg.Msg)
+		m.HandleMyOwnFocus(msg.Msg)
 		for _, panel := range m.Panels {
 			//DebugPrintf("ListPanel %v broadcasting message to child %v\n", m.path, i)
 			//DebugPrintf("panel: %T\n", panel)
@@ -334,7 +354,7 @@ func (m *ListPanel) handleFocusIndex(direction Relation) int {
 func (m *ListPanel) HandleFocusRequestMsg(msg FocusRequestMsg) *FocusGrantMsg {
 	newFocusIndex := m.handleFocusIndex(msg.Relation)
 	m.SetSelected(newFocusIndex)
-	return &FocusGrantMsg{RoutePath: &RoutePath{Path: m.GetPath()}, Relation: msg.Relation}
+	return &FocusGrantMsg{RoutePath: RoutePath{Path: m.GetPath()}, Relation: msg.Relation}
 }
 
 func (m ListPanel) GetLayout() Layout {
