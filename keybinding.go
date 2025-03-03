@@ -122,11 +122,12 @@ func KeyBindingsHandler(keyBindings []*KeyBinding, msg KeyMsg, onlyOverrides boo
 			if keyBinding.Enabled {
 				if keyBinding.Func != nil {
 					cmd := keyBinding.Func()
+					msg.SetUsed()
 					return cmd
 				}
 			}
 		}
 	}
-	msg.SetUnused()
+	//msg.SetUnused()
 	return nil
 }
