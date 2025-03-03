@@ -28,7 +28,7 @@ func (m *TopLevelListPanel) Init(cmds chan tea.Cmd) {
 func (m *TopLevelListPanel) FigureOutFocusGrant(msg FocusRequestMsg) *FocusGrantMsg {
 	switch msg.Relation {
 	case Self:
-		return &FocusGrantMsg{RoutePath: &RoutePath{Path: msg.RequestedPath}, Relation: msg.Relation}
+		return &FocusGrantMsg{RoutePath: RoutePath{Path: msg.RequestedPath}, Relation: msg.Relation}
 	case Left, Right, Up, Down:
 		return nil
 	default:
