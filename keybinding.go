@@ -1,6 +1,9 @@
 package peanutbutter
 
 import (
+	"fmt"
+	"strings"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/gdamore/tcell/v2"
 )
@@ -28,8 +31,8 @@ func NewKeyBinding(opts ...KeyBindingOption) *KeyBinding {
 	return keybinding
 }
 
-func SingleRuneBinding(rune rune) KeyBinding {
-	return *NewKeyBinding(
+func SingleRuneBinding(rune rune) *KeyBinding {
+	return NewKeyBinding(
 		WithKeyDef(KeyDef{Key: tcell.KeyRune, Modifiers: tcell.ModMask(0), Rune: rune}),
 		WithEnabled(true),
 		WithShortHelp(""),
@@ -37,8 +40,8 @@ func SingleRuneBinding(rune rune) KeyBinding {
 	)
 }
 
-func SingleKeyBinding(key tcell.Key) KeyBinding {
-	return *NewKeyBinding(
+func SingleKeyBinding(key tcell.Key) *KeyBinding {
+	return NewKeyBinding(
 		WithKeyDef(KeyDef{Key: key, Modifiers: tcell.ModMask(0), Rune: 0}),
 		WithEnabled(true),
 		WithShortHelp(""),
@@ -46,15 +49,15 @@ func SingleKeyBinding(key tcell.Key) KeyBinding {
 	)
 }
 
-var KeyTabBinding = SingleKeyBinding(tcell.KeyTAB)
+var KeyTabBinding = *SingleKeyBinding(tcell.KeyTAB)
 
-func ShiftTabBinding() KeyBinding {
+func ShiftTabBinding() *KeyBinding {
 	kb := SingleKeyBinding(tcell.KeyTAB)
 	kb.KeyDefs[0].Modifiers = tcell.ModMask(tcell.ModShift)
 	return kb
 }
 
-var KeyShiftTabBinding = SingleKeyBinding(tcell.KeyBacktab)
+var KeyShiftTabBinding = *SingleKeyBinding(tcell.KeyBacktab)
 
 type KeyBindingOption func(*KeyBinding)
 
@@ -130,4 +133,71 @@ func KeyBindingsHandler(keyBindings []*KeyBinding, msg KeyMsg, onlyOverrides boo
 	}
 	//msg.SetUnused()
 	return nil
+}
+
+func (keyBinding *KeyBinding) SetFunc(fn func() tea.Cmd) *KeyBinding {
+	keyBinding.Func = fn
+	return keyBinding
+}
+
+func (keyBinding *KeyBinding) SetShortHelp(shortHelp string) *KeyBinding {
+	keyBinding.ShortHelp = shortHelp
+	return keyBinding
+}
+
+func (keyBinding *KeyBinding) SetLongHelp(longHelp string) *KeyBinding {
+	keyBinding.LongHelp = longHelp
+	return keyBinding
+}
+
+func (ev KeyDef) Name() string {
+	s := ""
+	m := []string{}
+	if ev.Modifiers&tcell.ModShift != 0 {
+		m = append(m, "Shift")
+	}
+	if ev.Modifiers&tcell.ModAlt != 0 {
+		m = append(m, "Alt")
+	}
+	if ev.Modifiers&tcell.ModMeta != 0 {
+		m = append(m, "Meta")
+	}
+	if ev.Modifiers&tcell.ModCtrl != 0 {
+		m = append(m, "Ctrl")
+	}
+
+	ok := false
+	if s, ok = tcell.KeyNames[ev.Key]; !ok {
+		if ev.Key == tcell.KeyRune {
+			s = string(ev.Rune)
+		} else {
+			s = fmt.Sprintf("Key[%d,%d]", ev.Key, int(ev.Rune))
+		}
+	}
+	if len(m) != 0 {
+		if ev.Modifiers&tcell.ModCtrl != 0 && strings.HasPrefix(s, "Ctrl-") {
+			s = s[5:]
+		}
+		return fmt.Sprintf("%s+%s", strings.Join(m, "+"), s)
+	}
+	return s
+}
+
+func renderKeyDefs(keyDefs []KeyDef) string {
+	keys := []string{}
+	for _, keyDef := range keyDefs {
+		keys = append(keys, keyDef.Name())
+	}
+	return strings.Join(keys, "/")
+}
+
+func ShortHelpTexts(keybindings []*KeyBinding) []string {
+	helpTexts := []string{}
+	for _, keybinding := range keybindings {
+		if keybinding.ShortHelp != "" && keybinding.Enabled {
+			helptext := fmt.Sprintf("%s: %s", renderKeyDefs(keybinding.KeyDefs), keybinding.ShortHelp)
+			helpTexts = append(helpTexts, helptext)
+		}
+	}
+	return helpTexts
 }

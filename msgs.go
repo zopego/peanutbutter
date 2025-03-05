@@ -79,9 +79,18 @@ type FocusGrantMsg struct {
 
 type FocusRevokeMsg struct{}
 
+type PropagationDirection int
+
+const (
+	DownwardPropagation PropagationDirection = iota
+	UpwardPropagation
+	AnyPropagation
+)
+
 type KeyMsg struct {
 	*tcell.EventKey
-	Unused *bool
+	Unused    *bool
+	Direction *PropagationDirection
 }
 
 // IsUsed returns true if the keyMsg has not been used
@@ -102,6 +111,10 @@ func (keyMsg *KeyMsg) SetUnused() {
 // SetUsed sets the keyMsg to used
 func (keyMsg *KeyMsg) SetUsed() {
 	*keyMsg.Unused = false
+}
+
+func (keyMsg *KeyMsg) SetDirection(direction PropagationDirection) {
+	keyMsg.Direction = &direction
 }
 
 func (keyMsg *KeyMsg) Matches(keyDef KeyDef) bool {
