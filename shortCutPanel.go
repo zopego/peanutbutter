@@ -254,7 +254,7 @@ func (p *ShortCutPanel) HandleMessage(msg Msg) {
 				cmds = append(cmds, p.HandleKeybindings(keyMsg, false))
 			}
 		}
-		p.cmds <- tea.Batch(cmds...)
+		p.cmds <- p.RoutedCmd(tea.Batch(cmds...))
 	}
 	if cmd != nil {
 		p.cmds <- p.RoutedCmd(cmd)
