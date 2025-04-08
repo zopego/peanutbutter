@@ -42,7 +42,8 @@ func (t *pbRunModel) update(ev tcell.Event) {
 
 	case *tcell.EventKey:
 		unused := true
-		kmsg := KeyMsg{EventKey: ev, Unused: &unused}
+		direction := DownwardPropagation
+		kmsg := KeyMsg{EventKey: ev, Unused: &unused, Direction: &direction}
 		t.model.Update(kmsg)
 		if t.model.Draw() {
 			t.s.Show()

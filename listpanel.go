@@ -259,7 +259,7 @@ func (m *ListPanel) HandleMyOwnFocus(msg Msg) tea.Cmd {
 
 func (m *ListPanel) HandleMessage(msg Msg) {
 	p := GetMessageHandlingType(msg)
-	DebugPrintf("ListPanel %v received message: %T %+v %T\n", m.path, msg, msg, p)
+	DebugPrintf("ListPanel:%v received message: %T %+v %T\n", m.path, msg, msg, p)
 
 	switch msg := p.(type) {
 	case RequestMsgType:

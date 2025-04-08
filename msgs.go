@@ -1,6 +1,8 @@
 package peanutbutter
 
 import (
+	"fmt"
+
 	tcell "github.com/gdamore/tcell/v2"
 )
 
@@ -27,7 +29,8 @@ const (
 	//PrevWorkflow
 )
 
-type Msg interface{}
+type Msg interface {
+}
 
 // Fundamental handling types
 
@@ -91,6 +94,11 @@ type KeyMsg struct {
 	*tcell.EventKey
 	Unused    *bool
 	Direction *PropagationDirection
+}
+
+func (keyMsg KeyMsg) String() string {
+	kdf := KeyDef{Key: keyMsg.EventKey.Key(), Modifiers: keyMsg.EventKey.Modifiers(), Rune: keyMsg.EventKey.Rune()}
+	return fmt.Sprintf("KeyMsg: %s, Unused: %v, Direction: %v\n", kdf.String(), *keyMsg.Unused, *keyMsg.Direction)
 }
 
 // IsUsed returns true if the keyMsg has not been used

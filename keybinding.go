@@ -150,7 +150,7 @@ func (keyBinding *KeyBinding) SetLongHelp(longHelp string) *KeyBinding {
 	return keyBinding
 }
 
-func (ev KeyDef) Name() string {
+func (ev KeyDef) String() string {
 	s := ""
 	m := []string{}
 	if ev.Modifiers&tcell.ModShift != 0 {
@@ -186,7 +186,7 @@ func (ev KeyDef) Name() string {
 func renderKeyDefs(keyDefs []KeyDef) string {
 	keys := []string{}
 	for _, keyDef := range keyDefs {
-		keys = append(keys, keyDef.Name())
+		keys = append(keys, keyDef.String())
 	}
 	return strings.Join(keys, "/")
 }
